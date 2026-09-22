@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RT Trainer</title>
+<meta name="description" content="Radio telephony practice for UK VFR pilots: scripted ATC, push-to-talk and a debrief.">
+<meta name="theme-color" content="#101418">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- ============ SETUP ============ -->
+<main id="setup" class="screen">
+  <header class="masthead">
+    <h1>RT Trainer</h1>
+    <p>Scripted UK ATC with push-to-talk. Hold the button, speak, release, just like the real thing.</p>
+  </header>
+
+  <section class="block">
+    <h2>Aircraft</h2>
+    <div id="aircraft" class="cards two"></div>
+    <details class="edit">
+      <summary>Edit aircraft</summary>
+      <div id="aircraft-edit" class="edit-grid"></div>
+    </details>
+  </section>
+
+  <section class="block">
+    <h2>Scenario</h2>
+    <div id="scenarios" class="cards"></div>
+  </section>
+
+  <section class="block">
+    <h2>Options</h2>
+    <div class="opts">
+      <label for="o-density">Other traffic
+        <select id="o-density"><option value="quiet">Quiet</option><option value="normal" selected>Normal</option><option value="busy">Busy</option></select></label>
+      <label for="o-scale">Flight time
+        <select id="o-scale"><option value="1">Real time</option><option value="2">2× faster</option><option value="4">4× faster</option></select></label>
+      <label for="o-delay">Controller replies
+        <select id="o-delay"><option value="fast">Quick (0.3–1 s)</option><option value="normal" selected>Normal (0.4–1.6 s)</option><option value="busy">Busy controller (1–3 s)</option></select></label>
+      <label for="o-refuse">Refusals
+        <select id="o-refuse"><option value="-1">Never</option><option value="0" selected>Realistic</option><option value="0.4">More often</option><option value="1">Always</option></select></label>
+      <label class="check" for="o-text"><input type="checkbox" id="o-text"> Show text of transmissions</label>
+      <label class="check" for="o-mine"><input type="checkbox" id="o-mine" checked> Show what I said (speech recognition)</label>
+      <label class="check" for="o-hot"><input type="checkbox" id="o-hot" checked> Warn when I talk without PTT</label>
+      <label class="check" for="o-hiss"><input type="checkbox" id="o-hiss" checked> Background static</label>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Claude</h2>
+    <p class="hint">Optional. With an Anthropic API key, Claude takes over as controller if you leave the script (diversion, weather, change of plan) and writes your debrief. The key stays in this browser.</p>
+    <div class="opts">
+      <label for="o-key" class="wide">API key
+        <input type="password" id="o-key" autocomplete="off" spellcheck="false" placeholder="sk-ant-…"></label>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Microphone check</h2>
+    <p class="hint">Hold the button and say your callsign as you would on the radio, e.g. “Leeds Radar, Golf Charlie Lima Hotel Papa”.</p>
+    <div class="miccheck">
+      <button id="mic-test" class="btn ghost" type="button">Hold to test</button>
+      <div id="mic-result" class="mono small">Not tested yet.</div>
+    </div>
+  </section>
+
+  <section class="block" id="history-block" hidden>
+    <h2>Recent sessions</h2>
+    <ol id="history" class="history"></ol>
+  </section>
+
+  <div class="startbar">
+    <p id="support-warning" class="warn" hidden>Speech recognition needs Chrome (Android, macOS or Windows). Other browsers can still listen, but can’t hear you.</p>
+    <button id="to-brief" class="btn primary" type="button">Brief me</button>
+  </div>
+</main>
+
+<!-- ============ BRIEFING ============ -->
+<main id="brief" class="screen" hidden>
+  <header class="masthead">
+    <p class="eyebrow" id="brief-aircraft"></p>
+    <h1 id="brief-title"></h1>
+    <p id="brief-sub"></p>
+  </header>
+  <section class="block">
+    <ul id="brief-lines" class="brief-lines"></ul>
+    <div class="freqcard"><span id="brief-unit"></span><span id="brief-freq" class="mono"></span></div>
+    <p class="hint">Headphones stop the controller’s voice reaching the mic. Press, pause a beat, speak, release. Space bar works on a laptop.</p>
+  </section>
+  <div class="startbar two">
+    <button id="brief-back" class="btn ghost" type="button">Back</button>
+    <button id="begin" class="btn primary" type="button">Start flight</button>
+  </div>
+</main>
+
+<!-- ============ FLIGHT ============ -->
+<main id="flight" class="screen flight" hidden>
+  <div class="radiohead">
+    <div class="rh-row">
+      <span class="lamp" id="lamp-rx">RX</span>
+      <span class="unit" id="rh-unit">—</span>
+      <span class="lamp tx" id="lamp-tx">TX</span>
+    </div>
+    <div class="lcd"><span class="lcd-label">COM</span><span id="rh-freq">000.000</span></div>
+    <div class="rh-row small">
+      <span id="rh-reg" class="mono"></span>
+      <span class="xpdr" id="rh-xpdr"><span class="lcd-label">XPDR</span><span id="rh-squawk">----</span></span>
+    </div>
+  </div>
+
+  <section class="nav">
+    <div class="leg"><span id="leg-label">—</span><span id="leg-time" class="mono">--:--</span></div>
+    <div class="bar"><span id="leg-bar"></span></div>
+    <p id="cue" class="cue"></p>
+  </section>
+
+  <section class="log" id="log" aria-live="polite"></section>
+  <div id="toast" class="toast" hidden></div>
+  <div id="mine" class="mine mono" hidden></div>
+
+  <button id="ptt" class="ptt" type="button" aria-label="Push to talk (hold)">
+    <span class="ptt-label">HOLD TO TRANSMIT</span>
+    <span class="ptt-meter"><span id="meter"></span></span>
+  </button>
+
+  <div class="flightbar">
+    <button id="f-text" class="btn small ghost" type="button">Text: off</button>
+    <button id="f-pause" class="btn small ghost" type="button">Pause</button>
+    <button id="f-end" class="btn small ghost" type="button">End &amp; debrief</button>
+  </div>
+</main>
+
+<!-- ============ DEBRIEF ============ -->
+<main id="debrief" class="screen" hidden>
+  <header class="masthead">
+    <p class="eyebrow" id="d-eyebrow"></p>
+    <h1>Debrief</h1>
+    <p id="d-summary"></p>
+  </header>
+  <section class="block"><div id="d-stats" class="stats"></div></section>
+  <section class="block"><h2>What to work on</h2><ol id="d-issues" class="issues"></ol></section>
+  <section class="block" id="d-claude-block">
+    <h2>Instructor debrief</h2>
+    <div id="d-claude" class="claude-text"></div>
+    <button id="d-claude-btn" class="btn ghost" type="button">Ask Claude for a debrief</button>
+  </section>
+  <section class="block"><h2>Call by call</h2><ol id="d-timeline" class="timeline"></ol></section>
+  <div class="startbar two">
+    <button id="d-home" class="btn ghost" type="button">Change scenario</button>
+    <button id="d-again" class="btn primary" type="button">Fly it again</button>
+  </div>
+</main>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
