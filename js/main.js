@@ -317,6 +317,7 @@ function resetFlightUi(p) {
   $('xpdr-pad').hidden = true; $('rh-xpdr').classList.remove('wanted', 'identing'); $('map-orbit').classList.remove('wanted');
   $('rh-reg').textContent = p.reg;
   $('rh-xpdr').classList.toggle('off', !p.transponder);
+  $('rh-xpdr-mode').textContent = p.transponder ? 'ALT' : 'XPDR';    // as the head unit reads in Mode C
   $('rh-squawk').textContent = p.transponder ? '7000' : 'NONE';
   $('f-text').textContent = `Text: ${state.showText ? 'on' : 'off'}`;
   $('f-pause').textContent = 'Pause';
