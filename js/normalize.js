@@ -46,9 +46,11 @@ const PHRASES = [
   [/\bnorth-west\b/g, 'north west'], [/\bnorthwest\b/g, 'north west'],
   [/\bdown wind\b/g, 'downwind'], [/\bdead side\b/g, 'deadside'],
   [/\bpan-pan\b/g, 'pan pan'], [/\bmay day\b/g, 'mayday'],
-  // What speech recognition tends to make of the words that matter. "Squawk" is the worst of them.
-  [/\b(escort|squat|squawks|squawked|squark|squaw|squeak|s quark|swat)\b/g, 'squawk'],
-  [/\bsquawking\b/g, 'squawk'],
+  // What speech recognition tends to make of the words that matter. "Squawk" is the worst of them, so the first
+  // pattern sweeps up the whole family (squark, skork, scork, sqwak, skwak); the list holds the ones that are
+  // real words, which no pattern should be catching by accident.
+  [/\bs[qkc][uw]?[ao]?[wr]?c?ks?\b/g, 'squawk'],
+  [/\b(escort|squat|squaw|squeak|squad|stork|swat|s quark|squawked|squawking)\b/g, 'squawk'],
   [/\b(remain|remaining) outside a controlled\b/g, '$1 outside controlled'],
   [/\bwill co\b/g, 'wilco'], [/\broutine\b(?= (own )?navigation)/g, 'resume'],
   [/\bcontrol zone\b/g, 'control zone'],

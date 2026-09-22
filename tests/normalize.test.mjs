@@ -52,6 +52,12 @@ test('what speech recognition makes of the words that matter', () => {
     'basic service squawk 5603 remaining outside controlled airspace g c z i a');
   assert.equal(normalize('squat 7000 wilco'), 'squawk 7000 wilco');
   assert.equal(normalize('squawking 5634 G-CZIA'), 'squawk 5634 g c z i a');
+  assert.equal(normalize('basic service skork 5678'), 'basic service squawk 5678');
+  for (const w of ['squark', 'skork', 'scork', 'sqwak', 'skwak', 'squawks', 'stork', 'squad'])
+    assert.equal(normalize(`${w} 7000`), 'squawk 7000', w);
+  // ...without swallowing anything a pilot might actually say
+  for (const w of ['skipton', 'silsden', 'steeton', 'shipley', 'selby', 'scarborough', 'sherburn'])
+    assert.equal(normalize(w), w);
   assert.equal(normalize('golf charlie zulu india alfie'), 'g c z i a');
   assert.ok(findCallsign(tokens('golf charlie zulu india alfie'), 'G-CZIA'));
 });
