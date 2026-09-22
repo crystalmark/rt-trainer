@@ -93,3 +93,26 @@ test('Missed readback: ATC repeats, then asks how do you read', async () => {
   assert.ok(atc.some(t => /how do you read/.test(t)));
   assert.equal(events.filter(e => e.type === 'missed').length, 2);
 });
+
+test('Going off script hands the frequency to Claude', async () => {
+  const scenario = SCENARIOS.find(s => s.id === 'edinburgh-transit');
+  const clock = fakeClock(4000); const radio = fakeRadio(clock);
+  const calls = [];
+  const claude = { atc: async ({ pilot }) => { calls.push(pilot);
+    return calls.length === 1
+      ? { transmissions: ['G-IA, roger, leave controlled airspace eastbound, report established en route to East Fortune'], assessment: 'Clear request.' }
+      : { transmissions: ['G-IA, roger, frequency change approved'], end: true, summary: 'Diverted' }; } };
+  let handler = () => {};
+  const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(2), claude, settings: { trafficDensity: 'quiet' }, onEvent: e => handler(e) });
+  const perfect = perfectPilot(engine);
+  let diverted = false;
+  handler = ev => {
+    if (!diverted && ev.kind === 'awaiting' && ev.id === 'musselburgh') { diverted = true; sendWhenClear(engine, 'G-IA, request return to East Fortune due weather'); return; }
+    if (diverted && ev.kind === 'radio' && ev.meta?.claude && calls.length === 1) sendWhenClear(engine, 'Leave controlled airspace eastbound, wilco, G-IA');
+    if (!diverted) perfect(ev);
+  };
+  const events = await engine.start();
+  assert.ok(events.some(e => e.type === 'offscript'));
+  assert.equal(calls.length, 2);
+  assert.equal(events.at(-1).summary, 'Diverted');
+});
