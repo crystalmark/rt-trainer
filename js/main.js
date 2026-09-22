@@ -7,7 +7,7 @@ import { parseRoute, planRoute, routeText, mapPoints } from './route.js';
 import { MovingMap } from './map.js';
 import { customScenario } from './scenarios/custom.js';
 import { PROFILES } from './config.js';
-import { BrowserRadio, realClock, voiceChoices } from './radio.js';
+import { BrowserRadio, realClock, voiceChoices, voiceForUnit } from './radio.js';
 import { PushToTalk } from './ptt.js';
 import { Claude } from './claude.js';
 import { computeDebrief } from './debrief.js';
@@ -162,7 +162,7 @@ function fillVoices() {
   const voices = voiceChoices();
   if (!voices.length) return;
   const chosen = store.get('voice', '');
-  $('o-voice').innerHTML = [`<option value="">Best on this device (${esc(voices[0].name)})</option>`,
+  $('o-voice').innerHTML = [`<option value="">A different voice for each unit</option>`,
     ...voices.map(v => `<option value="${esc(v.name)}"${v.name === chosen ? ' selected' : ''}>${esc(v.name)} · ${esc(v.lang)}</option>`)].join('');
 }
 
@@ -174,7 +174,7 @@ function bindVoice() {
 }
 
 function testVoice() {
-  const voice = voiceChoices().find(v => v.name === $('o-voice').value) || voiceChoices()[0];
+  const voice = voiceForUnit(choice().unit, $('o-voice').value);
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(speakable(SAMPLE));
   if (voice) { u.voice = voice; u.lang = voice.lang; }
@@ -301,6 +301,7 @@ function onEngineEvent(ev) {
     case 'radio': addLine(ev.speaker, ev.text, ev.meta || {}); break;
     case 'radioState': {
       const st = ev.state; if (st.unit) $('rh-unit').textContent = st.unit; if (st.freq) $('rh-freq').textContent = Number(st.freq).toFixed(3);
+      if (st.unit) state.radio?.setUnit(st.unit);        // a new unit is a new controller, so a new voice
       if ('squawk' in st && profile().transponder) $('rh-squawk').textContent = st.squawk || '7000';
       if (st.qnh) $('nd-qnh').textContent = st.qnh;
       break;

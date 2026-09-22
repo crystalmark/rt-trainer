@@ -54,7 +54,8 @@ or say “unable, continue as cleared”. Before your first call it simply re-pl
 2. Pick aircraft and scenario, set traffic and flight-time speed, then **Brief me** → **Start flight**.
 3. **Hold** the big button (or the space bar) to transmit. Press, pause a beat, speak, release.
 4. Use headphones so the controller's voice doesn't reach the mic.
-5. **Controller voice**: pick one and press *Hear it*. Other stations use the next voices on the list.
+5. **Controller voice**: each unit gets its own voice, so Leeds and Edinburgh sound like different people. Pick one
+   to use everywhere instead, and press *Hear it* to compare.
 6. **End & debrief** at any time. The debrief lists every call, what was missing, and the better wording.
 
 ### What the controller does
@@ -97,10 +98,12 @@ See `docs/deploy.md`.
 - Chrome's speech recognition runs on Google's servers, so transmitting needs data signal.
 - The synthesised voices can't be band-limited like a real radio; static and squelch clicks go around them.
 - Voice quality depends on the device. The app ranks the voices it finds (British first, Chrome's “Google UK English”
-  and any Enhanced/Premium versions preferred) and never uses the novelty ones macOS ships. On a Mac, fetching the
-  Enhanced or Premium version of a voice in System Settings → Accessibility → Spoken Content → Manage Voices is the
-  biggest single improvement. Long transmissions are spoken a clause at a time, because Chrome cuts an utterance off
-  after about fifteen seconds.
+  and any enhanced/premium version preferred), never uses the novelty voices macOS ships, and gives each unit its own.
+  On a Mac, Apple offers Oliver, Kate and Serena as downloads under System Settings → Accessibility → Spoken Content →
+  System voice; they are far better than the compact Daniel. Restart Chrome afterwards to see them.
+- No regional accents are available: Chrome's British voices and Apple's are all standard English, and Apple's Scottish
+  voice was dropped years ago. A soft Scottish Edinburgh or a Yorkshire Leeds would need a speech API.
+- Long transmissions are spoken a clause at a time, because Chrome cuts an utterance off after about fifteen seconds.
 - On Android, keep the screen on (the app requests a wake lock). A locked phone suspends speech.
 - Squawk codes, pressures and traffic are illustrative. Check the AIP and NOTAMs before flying.
 

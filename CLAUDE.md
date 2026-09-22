@@ -24,7 +24,8 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   Always branch on `ctx.transponder` where handling differs.
 - `js/radio.js` (speech synthesis + Web Audio squelch/static/heterodyne). Voices are ranked by `voiceChoices()`
   (British first, Google/enhanced/premium preferred) and macOS novelty voices are excluded, or ATC ends up sounding
-  like Zarvox; the pilot picks one in the setup screen. Transmissions are spoken a clause at a time: Chrome cuts an
+  like Zarvox. Each unit gets its own controller voice (`voiceForUnit`, fixed by unit name, changed by `setUnit` when
+  the frequency changes); the pilot can pin one voice for every controller in the setup screen. Transmissions are spoken a clause at a time: Chrome cuts an
   utterance off after about 15 s. `js/ptt.js`
   (hold-to-talk, Web Speech API, hot-mic detector), `js/claude.js` (browser calls to the
   Anthropic API), `js/debrief.js` (stats + issues), `js/main.js` (UI).
@@ -72,7 +73,8 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
 - If the microphone is refused, still fly the scenario listen-only instead of failing to start.
 - London Information scenario for Yorkshire local flying (confirm the frequency for the sector first).
 - Better radio audio: synthesise through an API and band-limit it in Web Audio for a proper VHF sound (the browser's
-  own voices can't be routed through Web Audio).
+  own voices can't be routed through Web Audio). It is also the only way to get regional accents: nothing in Chrome or
+  macOS offers a Scottish or Yorkshire voice.
 - Bluetooth hardware PTT (a BLE remote mapped to a key).
 - Server-side key proxy on crystalmark.co.uk (see docs/deploy.md).
 - Use speech-recognition alternatives (`maxAlternatives`) to pick the best-matching transcript.

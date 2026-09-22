@@ -41,20 +41,31 @@ export class BrowserRadio {
   }
 
   voiceFor(speaker) {
+    if (speaker === 'atc') {
+      if (!this.voiceMap.has('atc')) this.voiceMap.set('atc', { voice: voiceForUnit(this.unit, this.atcChoice, this.voices), pitch: 1, rate: 1.08 });
+      return this.voiceMap.get('atc');
+    }
     if (!this.voiceMap.has(speaker)) {
-      const atc = speaker === 'atc';
       // Everyone else takes the next voice along, so stations sound like different people.
-      const idx = atc ? 0 : 1 + (this.voiceMap.size % Math.max(1, this.voices.length - 1));
-      const voice = this.voices[idx % Math.max(1, this.voices.length)] || null;
-      this.voiceMap.set(speaker, { voice, pitch: atc ? 1 : 0.94 + Math.random() * 0.12, rate: atc ? 1.08 : 1 + Math.random() * 0.12 });
+      const atc = this.voiceFor('atc').voice;
+      const others = this.voices.filter(v => v !== atc);
+      const voice = others[this.voiceMap.size % Math.max(1, others.length)] || atc || null;
+      this.voiceMap.set(speaker, { voice, pitch: 0.94 + Math.random() * 0.12, rate: 1 + Math.random() * 0.12 });
     }
     return this.voiceMap.get(speaker);
   }
 
-  /** The voice the controller uses; '' or an unknown name means the best one on this device. */
+  /** The voice the controller uses; '' means a different one per unit. */
   setAtcVoice(name) {
-    const v = this.voices.find(x => x.name === name) || this.voices[0] || null;
-    this.voiceMap.set('atc', { voice: v, pitch: 1, rate: 1.08 });
+    this.atcChoice = name || '';
+    this.voiceMap.delete('atc');
+  }
+
+  /** Which unit is on frequency: a different unit is a different controller, so a different voice. */
+  setUnit(unit) {
+    if (unit === this.unit) return;
+    this.unit = unit || '';
+    this.voiceMap.delete('atc');
   }
 
   say(speaker, display, speech) {
@@ -166,6 +177,17 @@ function voiceScore(v) {
   if (KNOWN_GOOD.test(v.name)) score += 15;
   if (/microsoft/i.test(v.name)) score += 10;
   return score;
+}
+
+const CONTROLLERS = 4;        // the controller's voice comes from the best few, fixed per unit
+
+function hash(text) { let h = 0; for (const c of String(text)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
+
+/** The voice a unit's controller speaks with: your choice if you made one, otherwise one of the best few. */
+export function voiceForUnit(unit, chosen = '', voices = voiceChoices()) {
+  const pick = chosen && voices.find(v => v.name === chosen);
+  if (pick) return pick;
+  return voices.length ? voices[hash(unit) % Math.min(CONTROLLERS, voices.length)] : null;
 }
 
 /** English voices on this device, best first. */
