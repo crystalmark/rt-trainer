@@ -35,6 +35,19 @@ cleared, and the flight screen shows your altitude, QNH, the next waypoint and t
 Routes must start and finish outside controlled airspace, at least 4 nm before it, below the 5000 ft transition
 altitude. Leeds Bradford itself isn't a destination yet.
 
+### The map
+The briefing shows your route on a map drawn from the same data (no map tiles, so it works offline): the zone and
+CTAs with their bases, VRPs (purple triangles), landmarks, Leeds Bradford's runway and ATZ, and your route in magenta.
+In flight it becomes a moving map with the track you've flown: track-up (TRK) or north-up (N), zoom, drag to look
+around (⌖ brings you back). **Log** swaps it for the radio log.
+
+### Changing the route in flight
+Tap a place on the map: **Direct to** skips ahead to it (or detours via it and carries on), **Divert** makes it your
+destination, and **Orbit** holds you where you are. Then tell ATC, as you would in the air. Outside controlled
+airspace you turn straight away and the controller re-clears you or carries on with a Basic Service. Cleared inside
+it, the new route shows dashed and you keep to your clearance until they approve (“roger, route direct Wetherby…”)
+or say “unable, continue as cleared”. Before your first call it simply re-plans.
+
 ## Using it
 
 1. Open it in **Chrome** (Pixel or MacBook). Speech recognition is Chrome-only.
@@ -66,7 +79,7 @@ the browser, the next step is a small proxy on crystalmark.co.uk (see CLAUDE.md)
 
 ```sh
 npm test                 # engine, matcher and scenario tests (Node 20+)
-python3 -m http.server 8080   # then open http://localhost:8080
+npm run serve            # then open http://localhost:8080 (never cached, so reloads pick up changes)
 ```
 
 The microphone only works on `https://` or `http://localhost`. To test on the Pixel before

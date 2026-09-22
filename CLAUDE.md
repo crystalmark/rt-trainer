@@ -31,7 +31,13 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   route and plans it (entry/exit at the altitude, the "via" point, reports, CTAs close overhead);
   `js/scenarios/custom.js` turns the plan into a transit or a Basic Service flight. The engine flies it with
   `s.fly(plan)`, `s.reach(nm)`, `s.hold(nm)`, `s.position()`: continuous movement (real time while anyone is
-  talking), `nav` events once a second for the flight screen.
+  talking), `nav` events once a second and `route` events for the flight screen.
+- `js/map.js`: the moving map, SVG drawn from the area data (symbols sized in pixels; track-up/north-up, drag, tap to
+  pick a place). Route changes in flight: `engine.changeRoute({ action: 'direct' | 'divert', place })` asks the
+  scenario's `routeChange()` for the new plan (turn now, or wait for ATC's approval when cleared inside controlled
+  airspace), unwinds the script with a `Reroute`, and the scenario's `resume()` picks up from its own record of how
+  far the flight has got. `engine.setOrbit(on)` holds the aircraft. Only the scenario's own waits take an abort;
+  background traffic sleeps with `abortable = false`.
 
 ## Conventions
 - UK CAP 413 phraseology only. Read CAA SafetySense 22 (July 2026) before changing wording.
@@ -48,7 +54,7 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
 
 ## Commands
 - `npm test`: Node test runner (no install needed).
-- `python3 -m http.server 8080`: serve locally; microphone needs localhost or HTTPS.
+- `npm run serve`: serve locally on http://localhost:8080, never cached; the microphone needs localhost or HTTPS.
 - `deploy/deploy.sh`: tests, then publish to https://crystalmark.co.uk/rt/ (S3 + CloudFront, not the Lightsail box;
   see docs/deploy.md). `--dryrun` to preview.
 - `node scripts/vrps.mjs <EG_VRP_DS_AREA1_FULL_yyyymmdd.csv>`: refresh the VRPs from the NATS dataset
@@ -57,7 +63,7 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
 ## Ideas / backlog
 - More areas for your own route: Manchester (EGCC VRPs are already in `js/data/vrps.js`; the Low Level Route),
   Edinburgh (EGPH), York (Leeds East EGCM VRPs; Humberside, Linton/Leeming).
-- Rolling map on the flight screen from the area data (airspace, VRPs, route, aircraft), no tiles needed.
+- Change altitude in flight, and have ATC react if you climb into a CTA without a clearance.
 - Import a SkyDemon route (need a sample export to see the format); unknown place names via the geocoder.
 - Routes over the airport: have ATC route you round it rather than just warning in the briefing.
 - If the microphone is refused, still fly the scenario listen-only instead of failing to start.

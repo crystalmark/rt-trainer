@@ -20,7 +20,7 @@ function fly(scenario, profile, seed, { settings = {}, pilot = perfectPilot, wat
   const radio = fakeRadio(clock);
   let handler = () => {};
   const engine = new Engine({ scenario, profile, radio, clock, rng: seeded(seed),
-    settings: { trafficDensity: 'busy', ...settings }, onEvent: e => { watch(e); handler(e); } });
+    settings: { trafficDensity: 'busy', ...settings }, onEvent: e => { watch(e, engine); handler(e); } });
   handler = pilot(engine);
   return engine.start();
 }
@@ -96,7 +96,7 @@ test('your route: the clearance names your VRPs and the reports follow them', as
   assert.ok(atc.some(t => /leave the zone east, not above altitude 3000 feet, report leaving controlled airspace/.test(t)));
   assert.ok(atc.some(t => /Basic Service, squawk 7000, frequency change approved/.test(t)));
   const calls = events.filter(e => e.type === 'call').map(e => e.id);
-  assert.deepEqual(calls.filter(id => id.startsWith('report')), ['report-0', 'report-1']);
+  assert.deepEqual(calls.filter(id => id.startsWith('report')), ['report-sml', 'report-ecp']);
 });
 
 test('your route, refused: "zone" instead of "controlled airspace" gets challenged', async () => {
@@ -136,4 +136,97 @@ test('your route: a wrong QNH in the clearance readback gets a single correction
   const corr = events.filter(e => e.type === 'correction');
   assert.equal(corr.length, 1, JSON.stringify(corr));
   assert.equal(corr[0].text, `G-IA, negative, QNH ${q}`);
+});
+
+// ---------- changing the route in flight ----------
+const place = id => leeds.places.find(p => p.id === id);
+const atcSaid = events => events.filter(e => e.type === 'atc' && e.speaker === 'atc').map(e => e.text);
+
+test('change of plan outside controlled airspace: divert, tell ATC, fly on with a Basic Service', async () => {
+  for (const profile of PROFILES) {
+    let changed = null;
+    const events = await fly(scenarioFor(ROUTES[0], 3), profile, 3, { settings: { refusalBias: -1, trafficDensity: 'quiet' },
+      watch: (e, engine) => {
+        if (!changed && e.kind === 'radio' && e.speaker === 'atc' && /Basic Service/.test(e.text)) {
+          changed = engine.changeRoute({ action: 'divert', place: place('bolton-abbey') }) ?? 'ok';
+        }
+      } });
+    assert.equal(changed, 'ok');
+    assertClean(events, profile.reg);
+    assert.ok(events.some(e => e.type === 'route-change' && /Divert to Bolton Abbey/.test(e.text)));
+    assert.ok(events.some(e => e.type === 'call' && e.id === 'reroute'), 'the pilot told ATC');
+    assert.ok(!atcSaid(events).some(t => /Cleared to enter/.test(t)), 'no transit clearance for a route that stays outside');
+    assert.equal(events.at(-1).summary, 'Basic Service flight completed');
+  }
+});
+
+test('cleared inside the zone: a new route waits for approval, then the aircraft turns', async () => {
+  const scenario = scenarioFor(ROUTES[0], 5);
+  const sIn = scenario.plan.transit.sIn;
+  let cleared = false, asked = false, approved = false, pendingUntilApproval = true, turned = false;
+  const events = await fly(scenario, PROFILES[1], 5, { settings: { refusalBias: -1, trafficDensity: 'quiet' },
+    watch: (e, engine) => {
+      if (e.kind === 'radio' && /Cleared to enter/.test(e.text)) cleared = true;
+      if (cleared && !asked && e.kind === 'nav' && e.s > sIn + 1.5) {
+        asked = true;
+        assert.equal(engine.changeRoute({ action: 'direct', place: place('wetherby') }), null);
+        return;                                                     // this nav event came from before the request
+      }
+      if (asked && e.kind === 'radio' && /roger, route direct Wetherby/.test(e.text)) approved = true;
+      if (asked && !approved && e.kind === 'nav' && !e.pending) pendingUntilApproval = false;
+      if (approved && e.kind === 'route' && !e.pending && e.points.at(-1).name === 'Wetherby' && e.points[0].kind === 'position') turned = true;
+    } });
+  assertClean(events, 'G-CZIA');
+  assert.ok(asked && approved, 'asked and approved');
+  assert.ok(pendingUntilApproval, 'kept to the clearance until ATC approved');
+  assert.ok(turned, 'flew the new route once approved');
+  assert.ok(events.some(e => e.type === 'call' && e.id === 'reroute'));
+  assert.equal(events.at(-1).summary, 'Transit completed');
+});
+
+test('cleared inside the zone: "unable, continue as cleared" keeps you on the old route', async () => {
+  let found = false;
+  for (let seed = 1; seed <= 60 && !found; seed++) {
+    const scenario = scenarioFor(ROUTES[0], seed);
+    const sIn = scenario.plan.transit.sIn;
+    let cleared = false, asked = false;
+    const events = await fly(scenario, PROFILES[1], seed, { settings: { trafficDensity: 'quiet' },
+      watch: (e, engine) => {
+        if (e.kind === 'radio' && /Cleared to enter/.test(e.text)) cleared = true;
+        if (cleared && !asked && e.kind === 'nav' && e.s > sIn + 1.5) { asked = true; engine.changeRoute({ action: 'direct', place: place('wetherby') }); }
+      } });
+    if (!atcSaid(events).some(t => /unable due traffic, continue as cleared/.test(t))) continue;
+    found = true;
+    assertClean(events, `seed ${seed}`);
+    assert.ok(events.some(e => e.type === 'call' && e.id === 'report-ecp'), 'still reported Eccup Reservoir on the old route');
+    assert.equal(events.at(-1).summary, 'Transit completed');
+  }
+  assert.ok(found, 'ATC said unable at least once in 60 seeds');
+});
+
+test('before your first call, a new route simply replaces the plan', async () => {
+  let changed = false;
+  const events = await fly(scenarioFor(ROUTES[0], 2), PROFILES[0], 2, { settings: { trafficDensity: 'quiet' },
+    watch: (e, engine) => {
+      if (!changed && e.kind === 'nav') { changed = true; assert.equal(engine.changeRoute({ action: 'divert', place: place('bolton-abbey') }), null); }
+    } });
+  assertClean(events, 'G-CLHP');
+  assert.ok(!events.some(e => e.type === 'call' && e.id === 'reroute'), 'nothing to tell ATC before the first call');
+  assert.equal(events.at(-1).summary, 'Basic Service flight completed');
+});
+
+test('orbit holds the aircraft where it is until you carry on', async () => {
+  let orbitAt = null, navs = 0, drift = 0;
+  const events = await fly(scenarioFor(ROUTES[5], 4), PROFILES[1], 4, { settings: { trafficDensity: 'quiet' },
+    watch: (e, engine) => {
+      if (e.kind !== 'nav') return;
+      if (orbitAt == null && e.s > 3) { engine.setOrbit(true); orbitAt = engine.nav.s; return; }
+      if (orbitAt != null && navs < 20) {
+        navs++; drift = Math.max(drift, Math.abs(e.s - orbitAt));
+        if (navs === 20) engine.setOrbit(false);
+      }
+    } });
+  assertClean(events, 'G-CZIA');
+  assert.equal(navs, 20);
+  assert.ok(drift < 1e-9, `moved ${drift} nm while orbiting`);
 });

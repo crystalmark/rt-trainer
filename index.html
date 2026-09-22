@@ -105,6 +105,14 @@
   </header>
   <section class="block">
     <ul id="brief-lines" class="brief-lines"></ul>
+    <div id="brief-map" class="map brief-map" hidden>
+      <svg role="img" aria-label="Map of your route"></svg>
+      <div class="map-ctl">
+        <button type="button" class="map-zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" class="map-zoom-out" aria-label="Zoom out">−</button>
+      </div>
+      <div class="map-scale"><span></span><b></b></div>
+    </div>
     <div class="freqcard"><span id="brief-unit"></span><span id="brief-freq" class="mono"></span></div>
     <p class="hint">Headphones stop the controller’s voice reaching the mic. Press, pause a beat, speak, release. Space bar works on a laptop.</p>
   </section>
@@ -136,6 +144,26 @@
     <p id="cue" class="cue"></p>
   </section>
 
+  <section id="map" class="map" hidden>
+    <svg role="img" aria-label="Moving map"></svg>
+    <div class="map-ctl">
+      <button type="button" class="map-zoom-in" aria-label="Zoom in">+</button>
+      <button type="button" class="map-zoom-out" aria-label="Zoom out">−</button>
+      <button type="button" class="map-orient" aria-label="Track up: switch to north up">TRK</button>
+      <button type="button" class="map-centre" aria-label="Back to the aircraft">⌖</button>
+    </div>
+    <button type="button" id="map-orbit" class="map-orbit" aria-pressed="false">Orbit</button>
+    <div class="map-scale"><span></span><b></b></div>
+    <div id="map-pick" class="map-pick" role="dialog" aria-labelledby="pick-name" hidden>
+      <div class="map-pick-head"><b id="pick-name"></b><span id="pick-info" class="mono small"></span></div>
+      <div class="map-pick-actions">
+        <button type="button" id="pick-direct" class="btn small primary">Direct to</button>
+        <button type="button" id="pick-divert" class="btn small">Divert</button>
+        <button type="button" id="pick-close" class="btn small ghost" aria-label="Close">✕</button>
+      </div>
+    </div>
+  </section>
+
   <section class="log" id="log" aria-live="polite"></section>
   <div id="toast" class="toast" hidden></div>
   <div id="mine" class="mine mono" hidden></div>
@@ -146,6 +174,7 @@
   </button>
 
   <div class="flightbar">
+    <button id="f-view" class="btn small ghost" type="button" hidden>Log</button>
     <button id="f-text" class="btn small ghost" type="button">Text: off</button>
     <button id="f-pause" class="btn small ghost" type="button">Pause</button>
     <button id="f-end" class="btn small ghost" type="button">End &amp; debrief</button>

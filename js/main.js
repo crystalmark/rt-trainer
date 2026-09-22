@@ -3,7 +3,8 @@
 import { Engine } from './engine.js';
 import { SCENARIOS } from './scenarios/index.js';
 import { AREAS } from './areas/index.js';
-import { parseRoute, planRoute, routeText } from './route.js';
+import { parseRoute, planRoute, routeText, mapPoints } from './route.js';
+import { MovingMap } from './map.js';
 import { customScenario } from './scenarios/custom.js';
 import { PROFILES } from './config.js';
 import { BrowserRadio, realClock } from './radio.js';
@@ -194,6 +195,13 @@ function renderBrief() {
   $('brief-sub').textContent = s.subtitle;
   $('brief-lines').innerHTML = s.briefing(engineCtxPreview()).map(l => `<li>${esc(l)}</li>`).join('');
   $('brief-unit').textContent = s.unit; $('brief-freq').textContent = s.freq;
+  $('brief-map').hidden = !s.plan;
+  if (s.plan) {                                   // your own route: see it on the map before you go
+    state.briefMap ||= new MovingMap($('brief-map'));
+    state.briefMap.setArea(s.plan.area);
+    state.briefMap.setRoute({ points: mapPoints(s.plan) });
+    state.briefMap.fit(mapPoints(s.plan));
+  }
   show('brief');
 }
 
@@ -213,6 +221,12 @@ async function begin() {
     const engine = new Engine({ scenario: s, profile: p, settings, radio: state.radio, clock: realClock, claude, onEvent: onEngineEvent });
     state.engine = engine;
     resetFlightUi(p);
+    if (s.plan) {
+      state.map ||= new MovingMap($('map'), { onPick: showPick });
+      state.map.reset();
+      state.map.setArea(s.plan.area);
+    }
+    setView(s.plan ? store.get('flightView', 'map') : 'log');
     show('flight');
     if (PushToTalk.supported()) {
       state.ptt = new PushToTalk({
@@ -264,7 +278,8 @@ function onEngineEvent(ev) {
     case 'leg':                                   // on your own route the nav events keep the time and the bar
       if (ev.nav) { $('leg-label').textContent = ev.label || ''; if (ev.cue) $('cue').textContent = ev.cue; } else startLeg(ev);
       break;
-    case 'nav': showNav(ev); break;
+    case 'nav': showNav(ev); state.map?.update(ev); $('map-orbit').setAttribute('aria-pressed', String(!!ev.pilotHold)); break;
+    case 'route': state.map?.setRoute(ev); break;
     case 'cue': case 'position': $('cue').textContent = ev.text || ev.cue || ev.label || ''; break;
     case 'toast': if (ev.text && (!/without pressing PTT/.test(ev.text) || $('o-hot').checked)) toast(ev.text, ev.level); break;
     case 'end': onEnd(ev); break;
@@ -312,6 +327,42 @@ function showNav(n) {
   $('leg-bar').style.width = `${Math.min(100, 100 * n.s / n.total)}%`;
 }
 
+// ---------------- moving map ----------------
+function setView(view) {
+  const hasMap = !!scenario().plan, map = hasMap && view === 'map';
+  $('map').hidden = !map; $('log').hidden = map; $('map-pick').hidden = true;
+  $('f-view').hidden = !hasMap;
+  $('f-view').textContent = map ? 'Log' : 'Map';
+}
+
+// A place tapped on the map: how far and which way, and Direct to / Divert.
+function showPick(place, info) {
+  state.picked = place;
+  $('pick-name').textContent = place.name;
+  const mins = info && Math.round(info.d / profile().speedKt * 60);
+  $('pick-info').textContent = [place.kind === 'vrp' ? 'VRP' : '', info && `${info.d.toFixed(1)} nm`,
+    info && `${String(Math.round(info.brg) % 360).padStart(3, '0')}°T`, info && `${mins} min`].filter(Boolean).join(' · ');
+  $('map-pick').hidden = false;
+}
+
+function bindMap() {
+  $('f-view').addEventListener('click', () => { const v = $('map').hidden ? 'map' : 'log'; store.set('flightView', v); setView(v); });
+  $('map-orbit').addEventListener('click', () => {
+    const e = state.engine; if (!e?.nav) return;
+    e.setOrbit(!e.nav.pilotHold);
+    $('map-orbit').setAttribute('aria-pressed', String(e.nav.pilotHold));
+  });
+  $('pick-close').addEventListener('click', () => { $('map-pick').hidden = true; });
+  for (const [id, action] of [['pick-direct', 'direct'], ['pick-divert', 'divert']]) $(id).addEventListener('click', () => {
+    const e = state.engine, place = state.picked;
+    $('map-pick').hidden = true;
+    if (!e || !place) return;
+    const err = e.changeRoute({ action, place });
+    if (err) { toast(err, 'warn'); return; }
+    toast(`${action === 'divert' ? 'Diverting to' : 'Direct to'} ${place.name}${e.nav?.pending ? ': ask ATC first, and keep to your clearance until they approve.' : '.'}`, 'info');
+  });
+}
+
 function lampLoop() {
   const rx = $('lamp-rx');
   const loop = () => { if (!state.engine?.running) { rx.classList.remove('on'); return; } rx.classList.toggle('on', !!state.radio?.busy); requestAnimationFrame(loop); };
@@ -340,6 +391,7 @@ function bindFlight() {
     if (e.paused) speechSynthesis.pause(); else speechSynthesis.resume();
   });
   $('f-end').addEventListener('click', () => state.engine?.stop());
+  bindMap();
 }
 
 // ---------------- debrief ----------------
@@ -400,9 +452,10 @@ function renderTl(e) {
     blocked: 'Blocked: you transmitted over another station', 'hot-mic': 'Spoke without pressing PTT (not transmitted)', 'stepped-in': 'Called in the middle of another exchange',
     'wrong-callsign': `Answered a call for ${e.forCall}`, note: e.text, offscript: `Left the script: “${e.text}”. Claude took over.`,
     'free-assessment': `You: “${e.text}”${e.assessment ? ` · ${e.assessment}` : ''}`, 'say-again': 'You asked for a repeat', answer: `Asked for ${e.asked}: “${e.text}”`,
+    'route-change': `Changed route: ${e.text}`, orbit: e.text,
     unexpected: `Unexpected call: “${e.text}”`, position: e.label, cue: e.text, atc: `ATC: ${e.text}`,
   };
-  const neutral = ['note', 'position', 'cue', 'atc', 'say-again', 'answer', 'free-assessment'].includes(e.type);
+  const neutral = ['note', 'position', 'cue', 'atc', 'say-again', 'answer', 'free-assessment', 'route-change', 'orbit'].includes(e.type);
   return `<li class="tl event${neutral ? '' : ' bad'}">${t}<div class="${e.type === 'atc' ? 'atc' : ''}">${esc(labels[e.type] || e.type)}</div></li>`;
 }
 

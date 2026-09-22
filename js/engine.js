@@ -4,9 +4,11 @@
 // No DOM access here: the browser app and the Node tests both drive it through adapters.
 import { match, isSayAgain, looksLikeRequest } from './matcher.js';
 import { speakable, phoneticCallsign, callsignForms, tokens } from './normalize.js';
+import { mapPoints } from './route.js';
 
 class OffScript extends Error { constructor(tx) { super('off-script'); this.tx = tx; } }
 class Ended extends Error { constructor() { super('ended'); } }
+class Reroute extends Error { constructor(change) { super('reroute'); this.change = change; } }
 
 // Names the speech synthesiser gets wrong.
 const PRONOUNCE = [
@@ -94,19 +96,21 @@ export class Engine {
     return speakable(s);
   }
 
-  async sleep(ms) {
+  // Only the scenario's own waits pick up an abort (off script, change of route); background traffic and queued
+  // replies sleep with abortable = false so they can't swallow it.
+  async sleep(ms, abortable = true) {
     let left = ms;
     while (left > 0) {
-      this.checkAbort();
+      this.checkAbort(abortable);
       const step = Math.min(left, this.clock.tick || 250);
       await this.clock.sleep(step);
       if (!this.paused) left -= step;
     }
-    this.checkAbort();
+    this.checkAbort(abortable);
   }
-  checkAbort() {
+  checkAbort(abortable = true) {
     if (!this.running) throw new Ended();
-    if (this.abortReason) { const r = this.abortReason; this.abortReason = null; throw r; }
+    if (abortable && this.abortReason) { const r = this.abortReason; this.abortReason = null; throw r; }
   }
 
   async withChannel(fn) {
@@ -186,7 +190,7 @@ export class Engine {
   queueAtc(text, { delay = 0.6, bypassLock = false } = {}) {
     const run = async () => {
       try {
-        await this.sleep(delay * 1000);
+        await this.sleep(delay * 1000, false);
         await this.transmit('atc', text, { toPilot: true });
       } catch (e) { if (!(e instanceof Ended)) throw e; }
     };
@@ -241,6 +245,8 @@ export class Engine {
       reach: (s, o) => e.reach(s, o),
       hold: s => { if (e.nav) e.nav.limit = s == null ? Infinity : Math.max(0, s); },
       position: () => e.nav ? { ...e.nav.plan.posAt(e.nav.s), s: e.nav.s } : null,
+      dropPending: () => { if (e.nav && e.nav.pending) { e.nav.pending = null; e.emitRoute(); } },
+      said: id => e.events.some(ev => (ev.type === 'call' || ev.type === 'readback') && ev.id === id),
       pause: sec => e.sleep(sec * 1000),
       end: summary => { e.summary = summary; },
       settings: e.settings,
@@ -261,7 +267,8 @@ export class Engine {
   // point along the route, where it orbits (outside the zone until cleared, say).
   fly(plan) {
     const looping = !!this.nav;
-    this.nav = { plan, s: 0, limit: Infinity, last: this.now(), emitted: -Infinity, orbiting: false };
+    this.nav = { plan, s: 0, limit: Infinity, last: this.now(), emitted: -Infinity, orbiting: false, pilotHold: false, pending: null };
+    this.emitRoute();
     if (!looping) this.navLoop();
   }
 
@@ -272,14 +279,18 @@ export class Engine {
     }
   }
 
+  navRate() {
+    const busy = this.radio.busy || this.channelLocked || this.waiter || this.keyed || this.exchangeActive;
+    return busy ? 1 : this.settings.timeScale;
+  }
+
   navStep() {
     const n = this.nav, now = this.now(), dt = now - n.last;
     n.last = now;
     if (this.paused || !this.running) return;
-    const busy = this.radio.busy || this.channelLocked || this.waiter || this.keyed || this.exchangeActive;
-    const cap = Math.min(n.limit, n.plan.total);
-    if (n.s < cap) n.s = Math.min(cap, n.s + this.ctx.speedKt * (busy ? 1 : this.settings.timeScale) * dt / 3600000);
-    n.orbiting = n.s >= cap - 1e-6 && cap < n.plan.total;
+    const cap = n.pilotHold ? n.s : Math.min(n.limit, n.plan.total);
+    if (n.s < cap) n.s = Math.min(cap, n.s + this.ctx.speedKt * this.navRate() * dt / 3600000);
+    n.orbiting = n.pilotHold || (n.s >= cap - 1e-6 && cap < n.plan.total);
     if (now - n.emitted >= 1000) { n.emitted = now; this.emit('nav', this.navState()); }
   }
 
@@ -289,7 +300,13 @@ export class Engine {
     const next = n.plan.points.find(w => w.s > n.s + 0.05);
     const left = next ? next.s - n.s : 0;
     return { s: n.s, total: n.plan.total, lat: p.lat, lon: p.lon, x: p.x, y: p.y, track: p.track, orbiting: n.orbiting,
+      pilotHold: n.pilotHold, pending: !!n.pending, speedKt: this.ctx.speedKt, rate: this.paused ? 0 : this.navRate(),
       altitude: n.plan.altitude, next: next ? { name: next.place.name, nm: left, sec: left / this.ctx.speedKt * 3600 } : null };
+  }
+
+  /** The route for the map: the plan being flown, and one waiting for ATC's approval. */
+  emitRoute() {
+    this.emit('route', { points: mapPoints(this.nav.plan), total: this.nav.plan.total, pending: this.nav.pending ? mapPoints(this.nav.pending) : null });
   }
 
   /** Wait until the aircraft is s nm along the route (or at its hold point, if that comes first). */
@@ -299,6 +316,30 @@ export class Engine {
     this.emit('leg', { label, nm: left, ms: left / this.ctx.speedKt * 3600000 / this.settings.timeScale, cue, nav: true });
     if (cue) this.log('cue', { text: cue });
     while (n.s < goal - 1e-6) await this.sleep(this.clock.tick || 250);
+  }
+
+  // ---------- changing the route in flight (called by the map) ----------
+  /**
+   * Direct to / divert: { action: 'direct' | 'divert', place }. Outside controlled airspace you turn straight away;
+   * cleared and inside it, the new route waits for ATC's approval. Either way the scenario picks up from here
+   * (scenario.routeChange plans it, scenario.resume flies it). Returns an error message, or null.
+   */
+  changeRoute(change) {
+    if (!this.running || !this.nav || !this.scenario.routeChange) return 'This flight has no route to change.';
+    let r;
+    try { r = this.scenario.routeChange({ s: this.nav.s, pos: this.nav.plan.posAt(this.nav.s) }, change); } catch (err) { return err.message; }
+    this.log('route-change', { text: `${change.action === 'divert' ? 'Divert to' : 'Direct to'} ${change.place.name}${r.approval ? ', asked ATC first' : ''}` });
+    if (r.approval && this.mode === 'script') { this.nav.pending = r.plan; this.emitRoute(); } else this.fly(r.plan);
+    if (this.mode === 'script') this.abortReason = new Reroute(r);
+    return null;
+  }
+
+  /** Orbit where you are (the map's Orbit button), or carry on. */
+  setOrbit(on) {
+    if (!this.nav || this.nav.pilotHold === on) return;
+    this.nav.pilotHold = on;
+    this.log('orbit', { text: on ? 'Orbiting' : 'Resumed the route' });
+    this.emit('nav', this.navState());
   }
 
   async atc(text, { readback = null, model = null, timeout, clearance = false, reply = null, hold = true } = {}) {
@@ -408,11 +449,16 @@ export class Engine {
     this.log('start', { scenario: this.scenario.id, reg: this.ctx.reg, transponder: this.ctx.transponder });
     this.emit('radioState', { state: (this.radioState = { unit: this.ctx.unit, freq: this.ctx.freq, squawk: this.ctx.transponder ? '7000' : null }) });
     this.trafficLoop();
-    try {
-      await this.scenario.run(this.api());
-    } catch (e) {
-      if (e instanceof OffScript) await this.freeMode(e.tx);
-      else if (!(e instanceof Ended)) { this.log('error', { text: String(e && e.stack || e) }); console.error(e); }
+    let part = api => this.scenario.run(api);
+    for (;;) {
+      try {
+        await part(this.api());
+      } catch (e) {
+        if (e instanceof Reroute) { part = api => this.scenario.resume(api, e.change); continue; }
+        if (e instanceof OffScript) await this.freeMode(e.tx);
+        else if (!(e instanceof Ended)) { this.log('error', { text: String(e && e.stack || e) }); console.error(e); }
+      }
+      break;
     }
     return this.finish();
   }
@@ -431,11 +477,11 @@ export class Engine {
     const gen = this.scenario.traffic;
     if (!gen) return;
     try {
-      await this.sleep(this.rand(4, 10) * 1000);
+      await this.sleep(this.rand(4, 10) * 1000, false);
       while (this.running) {
         const [a, b] = DENSITY_GAP[this.settings.trafficDensity] || DENSITY_GAP.normal;
-        await this.sleep(this.rand(a, b) * 1000);
-        while (this.running && (this.now() < this.trafficHoldUntil || this.waiter && this.lastWaitKind === 'readback' || this.keyed)) await this.sleep(1000);
+        await this.sleep(this.rand(a, b) * 1000, false);
+        while (this.running && (this.now() < this.trafficHoldUntil || this.waiter && this.lastWaitKind === 'readback' || this.keyed)) await this.sleep(1000, false);
         const ex = gen(this.api(), { similar: this.similarAbbr(), rng: this.rng });
         if (!ex || !ex.length) continue;
         await this.withChannel(async () => {
@@ -443,7 +489,7 @@ export class Engine {
           try {
             for (let i = 0; i < ex.length; i++) {
               const line = ex[i];
-              if (i) await this.sleep(this.rand(0.5, 1.4) * 1000);
+              if (i) await this.sleep(this.rand(0.5, 1.4) * 1000, false);
               await this.transmit(line[0], line[1], { traffic: true });
               if (line[2] && line[2].similar) this.similarWindow = { until: this.now() + 8000, call: line[2].similar };
             }
@@ -451,7 +497,7 @@ export class Engine {
         });
         if (this.standbyPending) {
           this.standbyPending = false;
-          await this.withChannel(async () => { await this.sleep(700); await this.transmit('atc', '{CALL}, pass your message', { toPilot: true }); });
+          await this.withChannel(async () => { await this.sleep(700, false); await this.transmit('atc', '{CALL}, pass your message', { toPilot: true }); });
         }
       }
     } catch (e) { if (!(e instanceof Ended) && !(e instanceof OffScript)) console.error(e); }
@@ -476,7 +522,9 @@ export class Engine {
       this.freeHistory.push({ role: 'pilot', text: tx.text });
       let resp;
       try {
-        resp = await this.claude.atc({ scenario: this.scenario, ctx: this.ctx, events: this.events, history: this.freeHistory, pilot: tx.text });
+        const nav = this.nav && { where: this.scenario.where?.(this.nav.plan.posAt(this.nav.s)) || null,
+          route: this.nav.plan.points.filter(w => w.s > this.nav.s + 0.05).map(w => w.place.name) };
+        resp = await this.claude.atc({ scenario: this.scenario, ctx: this.ctx, events: this.events, history: this.freeHistory, pilot: tx.text, nav });
       } catch (err) {
         this.log('claude-error', { text: String(err.message || err) });
         await this.transmit('atc', '{CALL}, say again', { toPilot: true });
@@ -515,4 +563,4 @@ function summarise(r) {
   };
 }
 
-export { OffScript, Ended, stripCallsign };
+export { OffScript, Ended, Reroute, stripCallsign };

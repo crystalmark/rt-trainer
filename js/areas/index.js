@@ -9,6 +9,8 @@ function prepare(area) {
     ...area, grid: g,
     airspace: area.airspace.map(v => ({ ...v, poly: boundary(v.boundary, g) })),
     places: area.places.map(p => ({ ...p, ...g.xy(p) })),
+    airport: area.airport && { ...area.airport, ...g.xy(area.airport),
+      runways: (area.airport.runways || []).map(([name, a, b]) => ({ name, a: g.xy(a), b: g.xy(b) })) },
     pronounce: area.places.filter(p => p.say).map(p => [new RegExp(`\\b${p.name}\\b`, 'g'), p.say]),
   };
 }

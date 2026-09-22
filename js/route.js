@@ -73,9 +73,10 @@ export const routeText = (points, altitude) => points.map(p => p.name).join(' â†
 /**
  * Lay the route over the area's airspace at the planned altitude.
  * Returns { points: [{ place, s }], total, posAt(s), nearestS(p), cas: [{ s0, s1, volume }], transit, under, closest,
- *           errors, warnings } where s is the distance along the route in nm.
+ *           errors, warnings } where s is the distance along the route in nm. midFlight: the route starts at your
+ *           present position (a change of plan), so it may start inside controlled airspace or close to it.
  */
-export function planRoute(area, places, altitude) {
+export function planRoute(area, places, altitude, { midFlight = false } = {}) {
   const errors = [], warnings = [];
   if (places.length < 2) errors.push('Name at least two places: where you start and where you finish.');
   if (!(altitude >= 1000 && altitude < 5000)) errors.push('Plan an altitude from 1000 to 4900 ft (the transition altitude is 5000 ft).');
@@ -91,7 +92,7 @@ export function planRoute(area, places, altitude) {
     return { ...q, ...area.grid.ll(q), track: bearing(a.place, b.place) };
   };
   const plan = { area, altitude, points, total, posAt, errors, warnings, cas: [], transit: null, under: [], closest: null };
-  if (errors.length || !total) { if (!errors.length) errors.push('Those places are all in the same spot.'); return plan; }
+  if (errors.length || !total) { if (!errors.length) errors.push(midFlight ? 'You are already there.' : 'Those places are all in the same spot.'); return plan; }
   if (total > 90) errors.push(`That's ${Math.round(total)} nm: keep it under 90 nm.`);
 
   const volumeAt = p => area.airspace.find(v => altitude >= v.base && altitude < v.top && inside(p, v.poly)) || null;
@@ -106,9 +107,9 @@ export function planRoute(area, places, altitude) {
   plan.nearestS = p => { let best = { s: 0, d: Infinity }; for (const { s } of samples) { const d = dist(p, posAt(s)); if (d < best.d) best = { s, d }; } return best; };
 
   const where = v => `${v.name}${v.base ? ` (base ${v.base} ft)` : ''} at ${altitude} ft`;
-  if (samples[0].v) errors.push(`You'd start inside ${where(samples[0].v)}: start outside controlled airspace.`);
+  if (samples[0].v && !midFlight) errors.push(`You'd start inside ${where(samples[0].v)}: start outside controlled airspace.`);
   if (samples[samples.length - 1].v) errors.push(`You'd finish inside ${where(samples[samples.length - 1].v)}: finish outside controlled airspace.`);
-  if (plan.cas.length && plan.cas[0].s0 < 4 && !samples[0].v) errors.push('Start at least 4 nm before controlled airspace, so there is time to call.');
+  if (plan.cas.length && plan.cas[0].s0 < 4 && !samples[0].v && !midFlight) errors.push('Start at least 4 nm before controlled airspace, so there is time to call.');
 
   // Airspace close overhead, and how close the route comes when it stays outside.
   for (const v of area.airspace) {
@@ -174,6 +175,24 @@ function transitOf(plan) {
     exitSide: compass(bearing({ x: 0, y: 0 }, exit)),
     intoZone: cas[0].volume.kind === 'CTR',
   };
+}
+
+/** A plan's points as the map draws them. */
+export const mapPoints = plan => plan.points.map(w => ({ name: w.place.name, kind: w.place.kind, x: w.place.x, y: w.place.y, s: w.s }));
+
+/** Your present position as the first point of a changed route. */
+export const presentPosition = p => ({ id: 'here', kind: 'position', name: 'present position', x: p.x, y: p.y, lat: p.lat, lon: p.lon });
+
+/**
+ * The places to fly after a change of plan in flight, from `s` nm along the current plan. "direct" skips ahead to a
+ * waypoint still on the route, or goes to an off-route place first and then carries on with the route; "divert"
+ * makes the place the destination.
+ */
+export function reroutePoints(plan, s, action, place) {
+  const ahead = plan.points.filter(w => w.s > s + 0.05 && w.place.kind !== 'position').map(w => w.place);
+  if (action === 'divert') return [place];
+  const i = ahead.findIndex(p => p.id === place.id);
+  return i >= 0 ? ahead.slice(i) : [place, ...ahead];
 }
 
 /** "3 miles south of Skipton", plus the names a pilot might reasonably use for the same spot. */

@@ -86,7 +86,8 @@ export default {
   squawks: '56',                      // the first two digits of the codes the unit hands out (illustrative)
   listeningSquawk: '2677',
   origin: ARP,
-  airport: { name: 'Leeds Bradford', ...ARP },
+  // Runway thresholds: AIP AD 2.12. The ATZ is a 2.5 nm circle.
+  airport: { name: 'Leeds Bradford', ...ARP, atz: 2.5, runways: [['14/32', at('535217.15N 0014008.68W'), at('535137.31N 0013907.44W')]] },
   airspace: AIRSPACE,
   places: [...vrps, ...landmarks],
   traffic: leedsTraffic,

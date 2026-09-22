@@ -91,3 +91,25 @@ test('a route that stays outside becomes a Basic Service flight', () => {
   assert.equal(plan.transit, null);
   assert.ok(plan.closest.d > 2);
 });
+
+test('changing the route in flight: direct to skips ahead or detours, divert replaces the destination', async () => {
+  const { reroutePoints } = await import('../js/route.js');
+  const r = parseRoute('Skipton to Wetherby via Salts Mill and Eccup Reservoir at 2800 ft', leeds);
+  const plan = planRoute(leeds, r.points, r.altitude);
+  const names = pts => pts.map(p => p.name);
+  const s = plan.points[1].s - 1;                                   // a mile short of Salts Mill
+  assert.deepEqual(names(reroutePoints(plan, s, 'direct', place('ecp'))), ['Eccup Reservoir', 'Wetherby']);
+  assert.deepEqual(names(reroutePoints(plan, s, 'direct', place('otley'))), ['Otley', 'Salts Mill', 'Eccup Reservoir', 'Wetherby']);
+  assert.deepEqual(names(reroutePoints(plan, s, 'divert', place('hgt'))), ['Harrogate']);
+});
+
+test('a changed route may start inside controlled airspace, but not finish there', async () => {
+  const { presentPosition } = await import('../js/route.js');
+  const here = presentPosition({ ...place('sml'), x: place('sml').x + 0.5 });   // just by Salts Mill, inside the CTR
+  let plan = planRoute(leeds, [here, place('wetherby')], 2800, { midFlight: true });
+  assert.deepEqual(plan.errors, []);
+  assert.equal(plan.transit.sIn, 0);
+  assert.ok(plan.transit.sOut > 0 && plan.transit.sOut < plan.total);
+  plan = planRoute(leeds, [here, place('otley')], 2800, { midFlight: true });
+  assert.match(plan.errors[0], /finish inside Leeds Bradford CTR/);
+});

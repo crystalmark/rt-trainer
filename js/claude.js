@@ -28,7 +28,7 @@ export class Claude {
     return data.content.map(c => c.text || '').join('');
   }
 
-  async atc({ scenario, ctx, events, history, pilot }) {
+  async atc({ scenario, ctx, events, history, pilot, nav = null }) {
     const briefing = scenario.briefing ? scenario.briefing(ctx).join(' ') : '';
     const places = scenario.places ? `Published VRPs: ${scenario.places.filter(p => p.kind === 'vrp').map(p => p.name).join(', ')}. ` +
       `Other landmarks you may use for routing and positions: ${scenario.places.filter(p => p.kind !== 'vrp').map(p => p.name).join(', ')}. ` +
@@ -46,7 +46,8 @@ export class Claude {
       `and never break character. Use sensible invented values for pressure settings, squawks and traffic. ` +
       `Reply with ONLY a JSON object: {"transmissions": ["what you say on frequency, in order"], "assessment": "one short sentence for the debrief on the pilot's last call against CAP 413", "position": "optional short description of where the aircraft now is", "end": false, "summary": "only when end is true"}. ` +
       `Set end true only when the pilot has left your frequency or landed.`;
-    const msgs = [{ role: 'user', content: `Recent frequency log:\n${recent}\n\nThe pilot just transmitted: "${pilot}"\n\nRespond as ${ctx.unit}.` }];
+    const where = nav ? `The aircraft is now ${nav.where || 'on its route'}${nav.route.length ? `, routing ${nav.route.join(', ')}` : ''}.\n\n` : '';
+    const msgs = [{ role: 'user', content: `Recent frequency log:\n${recent}\n\n${where}The pilot just transmitted: "${pilot}"\n\nRespond as ${ctx.unit}.` }];
     const text = await this.call(this.models.atc, system, msgs, 400);
     const json = text.match(/\{[\s\S]*\}/);
     if (!json) throw new Error('No JSON from Claude');

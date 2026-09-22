@@ -1,10 +1,10 @@
 // Offline shell: the app loads without signal. Speech recognition in Chrome still needs a
 // connection (it runs on Google's servers), so transmitting needs data.
-const CACHE = 'rt-trainer-v2';
+const CACHE = 'rt-trainer-v3';
 const FILES = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png',
   'js/main.js', 'js/engine.js', 'js/matcher.js', 'js/normalize.js', 'js/radio.js', 'js/ptt.js', 'js/claude.js',
-  'js/debrief.js', 'js/config.js', 'js/geo.js', 'js/route.js', 'js/data/vrps.js', 'js/areas/index.js', 'js/areas/leeds.js',
+  'js/debrief.js', 'js/config.js', 'js/geo.js', 'js/route.js', 'js/map.js', 'js/data/vrps.js', 'js/areas/index.js', 'js/areas/leeds.js',
   'js/scenarios/index.js', 'js/scenarios/common.js', 'js/scenarios/leeds-transit.js', 'js/scenarios/leeds-basic.js',
   'js/scenarios/edinburgh-transit.js', 'js/scenarios/carlisle.js', 'js/scenarios/scottish-info.js', 'js/scenarios/custom.js',
 ];

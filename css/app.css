@@ -67,6 +67,49 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--lcd); }
 .chip { border: 1px solid var(--rule); background: var(--bezel); border-radius: 999px; padding: 4px 10px; font-size: 13px; cursor: pointer; }
 .chip.vrp { border-color: #6B4F8C; color: #D9C4F2; }
 .chip b { font: 600 10px var(--display); letter-spacing: .1em; margin-left: 4px; color: #B89BDB; }
+/* ---------- moving map: UK chart colours (blue controlled airspace, magenta route, purple VRPs) ---------- */
+.map { --cas: #5A9BE6; --route: #E04BD0; --vrp: #C79BF2; --chart: #0C1115;
+  position: relative; min-height: 220px; background: var(--chart); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; touch-action: none; }
+.map svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; -webkit-user-select: none; }
+.map .cas, .map .atz, .map .rwy, .map .leg, .map .flown { vector-effect: non-scaling-stroke; }
+.map .cas { fill: rgba(90, 155, 230, .06); stroke: var(--cas); stroke-width: 1.5; stroke-dasharray: 7 4; }
+.map .cas.ctr { fill: rgba(90, 155, 230, .13); stroke-width: 2.2; stroke-dasharray: none; }
+.map .atz { fill: none; stroke: var(--cas); stroke-width: 1; stroke-dasharray: 2 3; }
+.map .rwy { stroke: var(--ink); stroke-width: 4; stroke-linecap: butt; }
+.map text { font: 600 12px var(--display); letter-spacing: .03em; fill: var(--muted); paint-order: stroke; stroke: var(--chart); stroke-width: 3px; stroke-linejoin: round; }
+.map .cas-label text { fill: #86B8F0; font-size: 11px; text-anchor: middle; }
+.map .airfield-label text { fill: var(--ink); font-size: 12px; }
+.map .pt circle { fill: #7D8B96; }
+.map .pt.field circle { fill: var(--chart); stroke: #9AA7B2; stroke-width: 1.5; }
+.map .pt.vrp path { fill: var(--chart); stroke: var(--vrp); stroke-width: 1.8; }
+.map .pt.vrp text { fill: var(--vrp); }
+.map.far .pt.place text, .map.far .pt.field text { display: none; }
+.map .leg { fill: none; stroke: var(--route); stroke-width: 3.5; stroke-linejoin: round; stroke-linecap: round; opacity: .85; }
+.map .leg.pending { stroke-dasharray: 9 7; opacity: 1; }
+.map .wp circle { fill: var(--chart); stroke: var(--route); stroke-width: 2.5; }
+.map .wp.next circle { fill: var(--route); }
+.map .flown { fill: none; stroke: var(--lcd); stroke-width: 1.5; opacity: .6; }
+.map .aircraft path { fill: var(--lcd); stroke: #1A1204; stroke-width: 1.5; }
+.map .orbit-ring { fill: none; stroke: var(--lcd); stroke-width: 1.5; stroke-dasharray: 3 4; display: none; }
+.map.orbiting .orbit-ring { display: inline; }
+.map-ctl { position: absolute; top: 8px; right: 8px; display: grid; gap: 6px; }
+.map-ctl button, .map-orbit { min-width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--rule); background: rgba(23, 28, 33, .92); font: 700 16px var(--display); letter-spacing: .06em; cursor: pointer; }
+.map-ctl .map-orient { font-size: 12px; }
+.map .map-centre { display: none; }
+.map.panned .map-centre { display: block; }
+.map-orbit { position: absolute; left: 8px; top: 8px; padding: 0 12px; font-size: 13px; text-transform: uppercase; }
+.map-orbit[aria-pressed="true"] { background: var(--lcd); color: #1A1204; border-color: var(--lcd); }
+.map-scale { position: absolute; left: 10px; bottom: 8px; display: flex; align-items: center; gap: 6px; font: 12px var(--mono); color: var(--muted); pointer-events: none; }
+.map-scale span { display: block; height: 5px; border: 1.5px solid var(--muted); border-top: 0; }
+.map-pick { position: absolute; left: 8px; right: 8px; bottom: 8px; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, .45); }
+.map-pick-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.map-pick-head b { font: 600 18px var(--display); letter-spacing: .03em; }
+.map-pick-head span { color: var(--muted); }
+.map-pick-actions { display: flex; gap: 8px; }
+.map-pick-actions .btn { flex: 1; }
+.map-pick-actions .ghost { flex: 0 0 auto; }
+.brief-map { height: min(46vh, 360px); }
+.flight:has(#map:not([hidden])) .ptt { height: min(26vh, 200px); }   /* still a big target, and the map gets the room */
 .navdata { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
 .navdata b { color: var(--lcd); font-weight: 600; font-variant-numeric: tabular-nums; }
 
