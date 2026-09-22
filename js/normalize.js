@@ -1,0 +1,203 @@
+// Text normalisation for radio calls.
+// Turns speech-recognition output ("golf hotel papa, QNH one zero one seven, three thousand feet")
+// and scenario patterns into one comparable token stream ("g h p qnh 1017 3000 feet").
+// Pure functions only: shared by the browser app and the Node tests.
+
+export const PHONETIC = {
+  alpha: 'a', alfa: 'a', bravo: 'b', charlie: 'c', charly: 'c', delta: 'd', echo: 'e',
+  foxtrot: 'f', golf: 'g', gulf: 'g', hotel: 'h', india: 'i', juliet: 'j', juliett: 'j',
+  kilo: 'k', lima: 'l', leema: 'l', mike: 'm', november: 'n', oscar: 'o', papa: 'p',
+  pappa: 'p', poppa: 'p', quebec: 'q', romeo: 'r', sierra: 's', tango: 't', uniform: 'u',
+  victor: 'v', whiskey: 'w', whisky: 'w', xray: 'x', yankee: 'y', zulu: 'z',
+};
+export const LETTER_TO_WORD = {
+  a: 'Alpha', b: 'Bravo', c: 'Charlie', d: 'Delta', e: 'Echo', f: 'Foxtrot', g: 'Golf', h: 'Hotel',
+  i: 'India', j: 'Juliett', k: 'Kilo', l: 'Lima', m: 'Mike', n: 'November', o: 'Oscar', p: 'Papa',
+  q: 'Quebec', r: 'Romeo', s: 'Sierra', t: 'Tango', u: 'Uniform', v: 'Victor', w: 'Whiskey',
+  x: 'X-ray', y: 'Yankee', z: 'Zulu',
+};
+
+const DIGITS = { zero: 0, one: 1, two: 2, three: 3, tree: 3, four: 4, fower: 4, five: 5, fife: 5,
+  six: 6, seven: 7, eight: 8, nine: 9, niner: 9 };
+const TEENS = { ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
+  sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 };
+const TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+
+// Multi-word and spelling variants folded before tokenising.
+const PHRASES = [
+  [/\bx-ray\b/g, 'xray'],
+  [/\bq\.?\s?n\.?\s?h\.?\b/g, 'qnh'], [/\bq and h\b/g, 'qnh'],
+  [/\bq\.?\s?f\.?\s?e\.?\b/g, 'qfe'],
+  [/\bv\.?\s?f\.?\s?r\.?\b/g, 'vfr'],
+  [/\bwill co\b/g, 'wilco'], [/\bwilko\b/g, 'wilco'], [/\bwill come\b/g, 'wilco'],
+  [/\baffirmative\b/g, 'affirm'],
+  [/\bhecto ?pascals?\b/g, 'hectopascals'], [/\bhpa\b/g, 'hectopascals'],
+  [/\bft\b/g, 'feet'], [/\bfoot\b/g, 'feet'],
+  [/\bnm\b/g, 'miles'], [/\bmile\b/g, 'miles'], [/\bnautical miles\b/g, 'miles'],
+  [/\bsouth-east\b/g, 'south east'], [/\bsoutheast\b/g, 'south east'],
+  [/\bsouth-west\b/g, 'south west'], [/\bsouthwest\b/g, 'south west'],
+  [/\bnorth-east\b/g, 'north east'], [/\bnortheast\b/g, 'north east'],
+  [/\bnorth-west\b/g, 'north west'], [/\bnorthwest\b/g, 'north west'],
+  [/\bdown wind\b/g, 'downwind'], [/\bdead side\b/g, 'deadside'],
+  [/\bpan-pan\b/g, 'pan pan'], [/\bmay day\b/g, 'mayday'],
+];
+
+/** Split a written registration like "G-CLHP" into separate letters. */
+function splitRegistrations(s) {
+  return s.replace(/\b([a-z])-([a-z]{2,4})\b/g, (_, a, b) => ' ' + [a, ...b].join(' ') + ' ');
+}
+
+function isNumberWord(w) {
+  return w in DIGITS || w in TEENS || w in TENS || w === 'hundred' || w === 'thousand' ||
+    w === 'decimal' || w === 'point' || /^\d+(\.\d+)?$/.test(w);
+}
+
+function cleanDecimal(s) {
+  if (!s.includes('.')) return s;
+  let [a, b] = s.split('.');
+  b = b.replace(/0+$/, '');
+  return b ? `${a}.${b}` : a;
+}
+
+/** Interpret one run of number tokens: digit strings, spoken digits, compounds, decimals. */
+function interpretRun(run) {
+  if (run.includes('hundred') || run.includes('thousand')) {
+    let total = 0, cur = 0;
+    for (const w of run) {
+      if (w === 'thousand') { total += (cur || 1) * 1000; cur = 0; }
+      else if (w === 'hundred') { cur = (cur || 1) * 100; }
+      else if (w in DIGITS) cur += DIGITS[w];
+      else if (w in TEENS) cur += TEENS[w];
+      else if (w in TENS) cur += TENS[w];
+      else if (/^\d+$/.test(w)) cur += Number(w);
+    }
+    return [String(total + cur)];
+  }
+  const out = [];
+  let buf = '';
+  let pendingTens = null;
+  const flushTens = () => { if (pendingTens !== null) { buf += String(pendingTens); pendingTens = null; } };
+  for (const w of run) {
+    if (w === 'decimal' || w === 'point') { flushTens(); buf += '.'; continue; }
+    if (w in TENS) { flushTens(); pendingTens = TENS[w]; continue; }
+    if (w in DIGITS) {
+      if (pendingTens !== null) { buf += String(pendingTens + DIGITS[w]); pendingTens = null; }
+      else buf += String(DIGITS[w]);
+      continue;
+    }
+    flushTens();
+    if (w in TEENS) { buf += String(TEENS[w]); continue; }
+    // numeric token from speech recognition, e.g. "134.58" or "1017"
+    if (buf && !buf.endsWith('.') && w.length > 1) { out.push(cleanDecimal(buf)); buf = ''; }
+    buf += w;
+  }
+  flushTens();
+  if (buf) out.push(cleanDecimal(buf.replace(/\.$/, '')));
+  return out;
+}
+
+/**
+ * normalize("Leeds Radar, G-CLHP, QNH one zero one seven") -> "leeds radar g c l h p qnh 1017"
+ */
+export function normalize(text) {
+  let s = String(text || '').toLowerCase();
+  s = s.replace(/(\d),(\d{3})\b/g, '$1$2');           // 3,000 -> 3000
+  s = splitRegistrations(s);
+  for (const [re, rep] of PHRASES) s = s.replace(re, rep);
+  s = s.replace(/[^a-z0-9.\s]/g, ' ').replace(/\.(?!\d)/g, ' ').replace(/(^|\s)\.(\d)/g, '$1$2');
+  const raw = s.split(/\s+/).filter(Boolean).filter(w => !['uh', 'um', 'er', 'erm'].includes(w));
+  const tokens = [];
+  for (let i = 0; i < raw.length;) {
+    if (isNumberWord(raw[i]) && !(raw[i] === 'point' && !isNumberWord(raw[i + 1] || ''))) {
+      const run = [];
+      while (i < raw.length && isNumberWord(raw[i])) run.push(raw[i++]);
+      // "point" / "decimal" dangling at the ends isn't numeric
+      while (run.length && (run[0] === 'decimal' || run[0] === 'point')) tokens.push(run.shift());
+      tokens.push(...interpretRun(run));
+    } else {
+      const w = raw[i++];
+      tokens.push(PHONETIC[w] || w);
+    }
+  }
+  return tokens.join(' ');
+}
+
+export function tokens(text) {
+  return normalize(text).split(' ').filter(Boolean);
+}
+
+/** "G-CLHP" -> { full: "gclhp", abbr: "ghp" } */
+export function callsignForms(reg) {
+  const letters = String(reg).toLowerCase().replace(/[^a-z]/g, '');
+  return { full: letters, abbr: letters[0] + letters.slice(-2) };
+}
+
+/** "G-CLHP" -> "Golf Charlie Lima Hotel Papa" */
+export function phoneticCallsign(reg) {
+  return String(reg).toLowerCase().replace(/[^a-z]/g, '').split('').map(c => LETTER_TO_WORD[c]).join(' ');
+}
+
+/**
+ * Find the callsign in a token list. Letters may arrive as phonetic words (already folded to
+ * single letters) or as a run-together token like "ghp".
+ */
+export function findCallsign(toks, reg) {
+  const { full, abbr } = callsignForms(reg);
+  // Expand run-together tokens that exactly equal a form of our callsign.
+  const expanded = [];
+  const origIndex = [];
+  toks.forEach((t, i) => {
+    if (t === full || t === abbr) { for (const c of t) { expanded.push(c); origIndex.push(i); } }
+    else { expanded.push(t); origIndex.push(i); }
+  });
+  // Build runs of single letters.
+  const runs = [];
+  let cur = null;
+  expanded.forEach((t, i) => {
+    if (/^[a-z]$/.test(t)) {
+      if (!cur) { cur = { start: origIndex[i], end: origIndex[i], letters: '' }; runs.push(cur); }
+      cur.letters += t; cur.end = origIndex[i];
+    } else cur = null;
+  });
+  let best = null;
+  for (const r of runs) {
+    let form = null;
+    if (r.letters.includes(full)) form = 'full';
+    else if (r.letters.includes(abbr)) form = 'abbr';
+    else if (r.letters.endsWith(abbr.slice(1)) && r.letters.length >= 2) form = 'partial';
+    if (form && (!best || rank(form) > rank(best.form))) best = { form, start: r.start, end: r.end };
+  }
+  return best;
+  function rank(f) { return { full: 3, abbr: 2, partial: 1 }[f]; }
+}
+
+/**
+ * Words the speech synthesiser should say the way a controller does:
+ * "3000 feet" -> "three thousand feet", "1017" -> "one zero one seven",
+ * "134.580" -> "one three four decimal five eight zero".
+ */
+const SAY_DIGIT = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'niner'];
+export function speakable(text) {
+  let s = String(text);
+  s = s.replace(/\b(\d{1,2})(000|500|[1-9]00)\s+feet\b/g, (_, th, rest) => {
+    const t = Number(th), h = Number(rest) / 100;
+    const words = [];
+    if (t) words.push(numberWord(t), 'thousand');
+    if (h) words.push(SAY_DIGIT[h] === 'niner' ? 'nine' : SAY_DIGIT[h], 'hundred');
+    return words.join(' ') + ' feet';
+  });
+  s = s.replace(/\b(\d{3,4})\s+feet\b/g, (_, n) => {
+    const v = Number(n); const h = Math.floor(v / 100);
+    return v % 100 === 0 ? `${SAY_DIGIT[h] === 'niner' ? 'nine' : SAY_DIGIT[h]} hundred feet` : n + ' feet';
+  });
+  s = s.replace(/\bsquawk (\d)000\b/gi, (_, d) => `squawk ${SAY_DIGIT[+d]} thousand`);
+  s = s.replace(/\b\d+\.\d+\b/g, m => m.split('').map(c => c === '.' ? 'decimal' : SAY_DIGIT[+c]).join(' '));
+  s = s.replace(/\b\d{2,}\b/g, m => m.split('').map(c => SAY_DIGIT[+c]).join(' '));
+  s = s.replace(/\b\d\b/g, m => ({ '9': 'niner' }[m] || ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'][+m]));
+  return s;
+}
+function numberWord(n) {
+  const small = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+    'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+  return small[n] || String(n);
+}
