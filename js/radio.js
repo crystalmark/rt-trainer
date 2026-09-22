@@ -34,13 +34,7 @@ export class BrowserRadio {
 
   loadVoices() {
     return new Promise(resolve => {
-      const pick = () => {
-        const all = speechSynthesis.getVoices();
-        const en = all.filter(v => /^en/i.test(v.lang));
-        const gb = en.filter(v => /GB|UK/i.test(v.lang) || /UK|British|Daniel|Kate|Serena|Arthur|Martha/i.test(v.name));
-        this.voices = gb.length >= 2 ? gb.concat(en.filter(v => !gb.includes(v))) : en.length ? en : all;
-        resolve();
-      };
+      const pick = () => { this.voices = voiceChoices(); resolve(); };
       if (speechSynthesis.getVoices().length) pick();
       else { speechSynthesis.onvoiceschanged = pick; setTimeout(pick, 1500); }
     });
@@ -48,17 +42,19 @@ export class BrowserRadio {
 
   voiceFor(speaker) {
     if (!this.voiceMap.has(speaker)) {
-      const idx = speaker === 'atc' ? 0 : 1 + (this.voiceMap.size % Math.max(1, this.voices.length - 1));
-      const voice = this.voices[idx % Math.max(1, this.voices.length)] || null;
       const atc = speaker === 'atc';
-      this.voiceMap.set(speaker, { voice, pitch: atc ? 1 : 0.8 + Math.random() * 0.45, rate: atc ? 1.12 : 1.02 + Math.random() * 0.15 });
+      // Everyone else takes the next voice along, so stations sound like different people.
+      const idx = atc ? 0 : 1 + (this.voiceMap.size % Math.max(1, this.voices.length - 1));
+      const voice = this.voices[idx % Math.max(1, this.voices.length)] || null;
+      this.voiceMap.set(speaker, { voice, pitch: atc ? 1 : 0.94 + Math.random() * 0.12, rate: atc ? 1.08 : 1 + Math.random() * 0.12 });
     }
     return this.voiceMap.get(speaker);
   }
 
+  /** The voice the controller uses; '' or an unknown name means the best one on this device. */
   setAtcVoice(name) {
-    const v = this.voices.find(x => x.name === name);
-    if (v) this.voiceMap.set('atc', { voice: v, pitch: 1, rate: 1.12 });
+    const v = this.voices.find(x => x.name === name) || this.voices[0] || null;
+    this.voiceMap.set('atc', { voice: v, pitch: 1, rate: 1.08 });
   }
 
   say(speaker, display, speech) {
@@ -71,10 +67,12 @@ export class BrowserRadio {
     this.busy = true; this.currentSpeaker = speaker; this.interrupted = false;
     this.squelch(true);
     await wait(60 + Math.random() * 90);
-    const parts = speech.split(/(?<=[.?!])\s+/).filter(Boolean);
-    for (const p of parts) {
+    const voice = this.voiceFor(speaker);
+    const parts = clauses(speech);
+    for (let i = 0; i < parts.length; i++) {
       if (this.interrupted) break;
-      await this.speakOne(p, this.voiceFor(speaker));
+      if (i) await wait(40);                       // a beat between clauses, and no clipped start
+      await this.speakOne(parts[i], voice);
     }
     this.squelch(false);
     const interrupted = this.interrupted;
@@ -90,7 +88,7 @@ export class BrowserRadio {
       let done = false;
       const finish = () => { if (!done) { done = true; clearTimeout(t); resolve(); } };
       u.onend = finish; u.onerror = finish;
-      const t = setTimeout(finish, 2500 + text.length * 110);   // Chrome sometimes never fires onend
+      const t = setTimeout(finish, 3000 + text.length * 150 / (rate || 1));   // Chrome sometimes never fires onend
       speechSynthesis.speak(u);
     });
   }
@@ -152,6 +150,44 @@ export class BrowserRadio {
     this.stopHeterodyne();
     if (this.ac) this.noiseGain.gain.setTargetAtTime(0, this.ac.currentTime, 0.05);
   }
+}
+
+// Voices worth listening to. macOS ships a pile of novelty voices (Bubbles, Zarvox, Grandma and friends), which
+// is what you get if you just take the English ones in order; Chrome adds its own network voices, which sound the
+// most natural. Best first: British, then other English, preferring Google/enhanced/premium versions.
+const NOVELTY = /^(albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|eddy|flo|fred|good news|grandma|grandpa|hysterical|jester|junior|kathy|organ|princess|ralph|reed|rocko|sandy|shelley|superstar|trinoids|whisper|wobble|zarvox)\b/i;
+const KNOWN_GOOD = /\b(daniel|arthur|serena|kate|jamie|oliver|stephanie|martha|karen|moira|tessa|samantha|alex|aaron|nicky)\b/i;
+
+function voiceScore(v) {
+  const lang = (v.lang || '').replace('_', '-');
+  let score = /^en-GB/i.test(lang) ? 40 : /^en-(IE|AU|NZ|ZA)/i.test(lang) ? 25 : 10;
+  if (/google/i.test(v.name)) score += 30;
+  if (/(enhanced|premium|natural|neural)/i.test(v.name)) score += 25;
+  if (KNOWN_GOOD.test(v.name)) score += 15;
+  if (/microsoft/i.test(v.name)) score += 10;
+  return score;
+}
+
+/** English voices on this device, best first. */
+export function voiceChoices() {
+  return speechSynthesis.getVoices()
+    .filter(v => /^en/i.test(v.lang) && !NOVELTY.test(v.name))
+    .sort((a, b) => voiceScore(b) - voiceScore(a) || a.name.localeCompare(b.name));
+}
+
+// Chrome gives up on an utterance after about fifteen seconds, which cuts long clearances off, so speak a clause
+// at a time. Splits on sentences, then on commas once a clause gets long.
+function clauses(text, limit = 140) {
+  const out = [];
+  for (const sentence of String(text).split(/(?<=[.?!])\s+/)) {
+    let line = '';
+    for (const part of sentence.split(/(?<=,)\s+/)) {
+      if (line && (line + ' ' + part).length > limit) { out.push(line); line = ''; }
+      line = line ? `${line} ${part}` : part;
+    }
+    if (line.trim()) out.push(line.trim());
+  }
+  return out.filter(Boolean);
 }
 
 export const realClock = {

@@ -22,7 +22,10 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   Templates: `{CS}` full callsign, `{AB}` abbreviated, `{CALL}` whichever ATC is currently using,
   `{TYPE}`, `{UNIT}`, `{SIM}` a confusable callsign. Build items with `P()` and helpers in `common.js`.
   Always branch on `ctx.transponder` where handling differs.
-- `js/radio.js` (speech synthesis + Web Audio squelch/static/heterodyne), `js/ptt.js`
+- `js/radio.js` (speech synthesis + Web Audio squelch/static/heterodyne). Voices are ranked by `voiceChoices()`
+  (British first, Google/enhanced/premium preferred) and macOS novelty voices are excluded, or ATC ends up sounding
+  like Zarvox; the pilot picks one in the setup screen. Transmissions are spoken a clause at a time: Chrome cuts an
+  utterance off after about 15 s. `js/ptt.js`
   (hold-to-talk, Web Speech API, hot-mic detector), `js/claude.js` (browser calls to the
   Anthropic API), `js/debrief.js` (stats + issues), `js/main.js` (UI).
 - Your own route: `js/areas/<area>.js` holds an area's airspace (copied point for point from the AIP, arcs
@@ -68,6 +71,8 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
 - Routes over the airport: have ATC route you round it rather than just warning in the briefing.
 - If the microphone is refused, still fly the scenario listen-only instead of failing to start.
 - London Information scenario for Yorkshire local flying (confirm the frequency for the sector first).
+- Better radio audio: synthesise through an API and band-limit it in Web Audio for a proper VHF sound (the browser's
+  own voices can't be routed through Web Audio).
 - Bluetooth hardware PTT (a BLE remote mapped to a key).
 - Server-side key proxy on crystalmark.co.uk (see docs/deploy.md).
 - Use speech-recognition alternatives (`maxAlternatives`) to pick the best-matching transcript.

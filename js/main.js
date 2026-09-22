@@ -7,11 +7,11 @@ import { parseRoute, planRoute, routeText, mapPoints } from './route.js';
 import { MovingMap } from './map.js';
 import { customScenario } from './scenarios/custom.js';
 import { PROFILES } from './config.js';
-import { BrowserRadio, realClock } from './radio.js';
+import { BrowserRadio, realClock, voiceChoices } from './radio.js';
 import { PushToTalk } from './ptt.js';
 import { Claude } from './claude.js';
 import { computeDebrief } from './debrief.js';
-import { tokens, findCallsign, normalize } from './normalize.js';
+import { tokens, findCallsign, normalize, speakable } from './normalize.js';
 
 const $ = id => document.getElementById(id);
 const store = {
@@ -149,8 +149,37 @@ function bindSetup() {
   for (const [id, d] of Object.entries(checks)) { $(id).checked = store.get(id, d); $(id).addEventListener('change', () => store.set(id, $(id).checked)); }
   $('support-warning').hidden = PushToTalk.supported();
   $('to-brief').addEventListener('click', renderBrief);
+  bindVoice();
   bindRoute();
   bindMicTest();
+}
+
+// ---------------- controller voice ----------------
+const SAMPLE = 'Golf Charlie Lima Hotel Papa, Leeds Radar, cleared to enter the Leeds control zone via Salts Mill, ' +
+  'VFR, not above altitude 3000 feet, Leeds QNH 1017. Report Salts Mill';
+
+function fillVoices() {
+  const voices = voiceChoices();
+  if (!voices.length) return;
+  const chosen = store.get('voice', '');
+  $('o-voice').innerHTML = [`<option value="">Best on this device (${esc(voices[0].name)})</option>`,
+    ...voices.map(v => `<option value="${esc(v.name)}"${v.name === chosen ? ' selected' : ''}>${esc(v.name)} · ${esc(v.lang)}</option>`)].join('');
+}
+
+function bindVoice() {
+  fillVoices();
+  speechSynthesis.addEventListener('voiceschanged', fillVoices);
+  $('o-voice').addEventListener('change', () => { store.set('voice', $('o-voice').value); testVoice(); });
+  $('voice-test').addEventListener('click', testVoice);
+}
+
+function testVoice() {
+  const voice = voiceChoices().find(v => v.name === $('o-voice').value) || voiceChoices()[0];
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(speakable(SAMPLE));
+  if (voice) { u.voice = voice; u.lang = voice.lang; }
+  u.rate = 1.08;
+  speechSynthesis.speak(u);
 }
 
 function bindMicTest() {
@@ -212,6 +241,7 @@ async function begin() {
   try {
     state.radio = new BrowserRadio({ hiss: $('o-hiss').checked });
     await state.radio.init();
+    state.radio.setAtcVoice(store.get('voice', ''));
     const key = $('o-key').value.trim();
     const claude = key ? new Claude({ apiKey: key }) : null;
     const settings = {

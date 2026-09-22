@@ -114,6 +114,7 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--lcd); }
 .navdata b { color: var(--lcd); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .miccheck { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.miccheck select { flex: 1 1 240px; }
 .history { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
 .brief-lines { margin: 0; padding-left: 18px; display: grid; gap: 6px; max-width: 64ch; }
 .freqcard { display: flex; justify-content: space-between; align-items: baseline; background: var(--lcd-bg); border: 1px solid #3A2C0E; border-radius: 6px; padding: 10px 14px; color: var(--lcd); font: 600 18px var(--display); letter-spacing: .06em; text-transform: uppercase; }
