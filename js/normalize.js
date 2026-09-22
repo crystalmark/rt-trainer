@@ -9,6 +9,11 @@ export const PHONETIC = {
   kilo: 'k', lima: 'l', leema: 'l', mike: 'm', november: 'n', oscar: 'o', papa: 'p',
   pappa: 'p', poppa: 'p', quebec: 'q', romeo: 'r', sierra: 's', tango: 't', uniform: 'u',
   victor: 'v', whiskey: 'w', whisky: 'w', xray: 'x', yankee: 'y', zulu: 'z',
+  // and the spellings the recogniser comes back with
+  alpher: 'a', alfie: 'a', elfa: 'a', bravour: 'b', charley: 'c', deltar: 'd', ecco: 'e',
+  hotell: 'h', indiya: 'i', juliette: 'j', keelo: 'k', leemah: 'l', maik: 'm', novemba: 'n',
+  papaa: 'p', romio: 'r', cierra: 's', sierre: 's', tangoo: 't', unicorn: 'u', victa: 'v',
+  whisker: 'w', yanky: 'y', zoolu: 'z',
 };
 export const LETTER_TO_WORD = {
   a: 'Alpha', b: 'Bravo', c: 'Charlie', d: 'Delta', e: 'Echo', f: 'Foxtrot', g: 'Golf', h: 'Hotel',
@@ -22,6 +27,7 @@ const DIGITS = { zero: 0, one: 1, two: 2, three: 3, tree: 3, four: 4, fower: 4, 
 const TEENS = { ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
   sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 };
 const TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+export const HESITATION = /^(e+r+m*|u+h+|u+m+|a+h+|e+h+|h+m+|m+h+m*)$/i;
 
 // Multi-word and spelling variants folded before tokenising.
 const PHRASES = [
@@ -40,6 +46,12 @@ const PHRASES = [
   [/\bnorth-west\b/g, 'north west'], [/\bnorthwest\b/g, 'north west'],
   [/\bdown wind\b/g, 'downwind'], [/\bdead side\b/g, 'deadside'],
   [/\bpan-pan\b/g, 'pan pan'], [/\bmay day\b/g, 'mayday'],
+  // What speech recognition tends to make of the words that matter. "Squawk" is the worst of them.
+  [/\b(escort|squat|squawks|squawked|squark|squaw|squeak|s quark|swat)\b/g, 'squawk'],
+  [/\bsquawking\b/g, 'squawk'],
+  [/\b(remain|remaining) outside a controlled\b/g, '$1 outside controlled'],
+  [/\bwill co\b/g, 'wilco'], [/\broutine\b(?= (own )?navigation)/g, 'resume'],
+  [/\bcontrol zone\b/g, 'control zone'],
 ];
 
 /** Split a written registration like "G-CLHP" into separate letters. */
@@ -105,7 +117,8 @@ export function normalize(text) {
   s = splitRegistrations(s);
   for (const [re, rep] of PHRASES) s = s.replace(re, rep);
   s = s.replace(/[^a-z0-9.\s]/g, ' ').replace(/\.(?!\d)/g, ' ').replace(/(^|\s)\.(\d)/g, '$1$2');
-  const raw = s.split(/\s+/).filter(Boolean).filter(w => !['uh', 'um', 'er', 'erm'].includes(w));
+  // Hesitation sounds, however the recogniser spells them: er, err, errr, erm, uh, umm, ah, eh, hmm.
+  const raw = s.split(/\s+/).filter(Boolean).filter(w => !HESITATION.test(w));
   const tokens = [];
   for (let i = 0; i < raw.length;) {
     if (isNumberWord(raw[i]) && !(raw[i] === 'point' && !isNumberWord(raw[i + 1] || ''))) {

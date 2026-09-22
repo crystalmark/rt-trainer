@@ -558,9 +558,10 @@ function renderTl(e) {
     const order = r.orderOk === false ? '<div class="soft">Items read back in a different order from the controller.</div>' : '';
     const cs = !r.callsign ? '<div class="miss">No callsign.</div>' : r.callsign === 'partial' ? '<div class="soft">Callsign incomplete.</div>' : '';
     const atc = e.atcText ? `<div class="atc">ATC: ${esc(e.atcText)}</div>` : '';
+    const heard = e.heard ? `<div class="soft">Speech recognition first heard “${esc(e.heard)}”: taken from its other guesses.</div>` : '';
     const model = e.model && (miss || subs || soft || fil || order || cs) ? `<div class="model">Better: ${esc(e.model)}</div>` : '';
     const bad = miss || subs || cs ? ' bad' : '';
-    return `<li class="tl${bad}"><div class="t">${fmt(e.t)}<span class="score">${r.score != null ? r.score + '/100' : ''}</span></div>${atc}<div class="said">You: ${esc(e.text)}</div>${miss}${subs}${cs}${order}${soft}${fil}${model}</li>`;
+    return `<li class="tl${bad}"><div class="t">${fmt(e.t)}<span class="score">${r.score != null ? r.score + '/100' : ''}</span></div>${atc}<div class="said">You: ${esc(e.text)}</div>${heard}${miss}${subs}${cs}${order}${soft}${fil}${model}</li>`;
   }
   const labels = {
     correction: `ATC corrected you: “${e.text}”`, missed: 'No reply to ATC', late: 'Late report: ATC chased you', 'no-call': 'Expected call not made',

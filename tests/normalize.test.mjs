@@ -46,3 +46,19 @@ test('matcher: missing items, substitutes, order, fillers', () => {
   r = match('roger that with you G-HP', [], ctx);
   assert.equal(r.fillers.length, 2);
 });
+
+test('what speech recognition makes of the words that matter', () => {
+  assert.equal(normalize('basic service escort 5603 remaining outside a controlled airspace golf Charlie Zulu India alpha'),
+    'basic service squawk 5603 remaining outside controlled airspace g c z i a');
+  assert.equal(normalize('squat 7000 wilco'), 'squawk 7000 wilco');
+  assert.equal(normalize('squawking 5634 G-CZIA'), 'squawk 5634 g c z i a');
+  assert.equal(normalize('golf charlie zulu india alfie'), 'g c z i a');
+  assert.ok(findCallsign(tokens('golf charlie zulu india alfie'), 'G-CZIA'));
+});
+
+test('hesitation is ignored, however it is spelled', () => {
+  assert.equal(normalize('err squawk 5634 erm wilco G-CZIA'), 'squawk 5634 wilco g c z i a');
+  assert.equal(normalize('uhh basic service ah remaining outside controlled airspace'), 'basic service remaining outside controlled airspace');
+  assert.equal(normalize('errr golf hotel papa'), 'g h p');
+  assert.equal(normalize('eight hundred feet'), '800 feet', 'real words are left alone');
+});

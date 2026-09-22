@@ -50,6 +50,9 @@ export function computeDebrief(events) {
   if (order) add(3, `Readback order changed ${order}×`, 'Read back in the order the controller gave it.');
   const callsignStart = txs.filter(e => e.type === 'readback' && e.result?.callsignPlacement === 'start').length;
   if (callsignStart) add(2, 'Callsign at the start of readbacks', 'Readbacks end with your callsign: “Squawk 5634, G-HP”.');
+  // Examiners notice these, and they eat the frequency.
+  const hesitations = txs.reduce((n, e) => n + (String(e.text || '').match(/\b(e+r+m*|u+h+|u+m+)\b/gi) || []).length, 0);
+  if (hesitations >= 4) add(4, `“Er” and “erm” ${hesitations}×`, 'Think the call through, then key: press, pause a beat, speak. Dead air with hesitation in it blocks the frequency for everyone.');
   if (stats.medianResponseSec && stats.medianResponseSec > 6) add(3, `Slow to answer (median ${stats.medianResponseSec} s)`, 'Aim to start your readback within about 3–5 seconds.');
   issues.sort((a, b) => b.weight - a.weight);
 

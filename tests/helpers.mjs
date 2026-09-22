@@ -50,10 +50,10 @@ export function perfectPilot(engine, { override = {} } = {}) {
 }
 
 /** Like a real pilot: wait for a gap on the frequency, then transmit. */
-export function sendWhenClear(engine, text) {
+export function sendWhenClear(engine, text, meta = {}) {
   const go = () => {
     if (engine.radio.busy || engine.exchangeActive) return setTimeout(go, 1);
-    engine.pilotKeyDown(); engine.pilotTransmission(text);
+    engine.pilotKeyDown(); engine.pilotTransmission(text, meta);
   };
   setImmediate(go);
 }

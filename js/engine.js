@@ -411,6 +411,21 @@ export class Engine {
     return null;
   }
 
+  /**
+   * What the pilot said, judged against what the controller is expecting. Speech recognition offers several
+   * transcripts and the first is often not the best ("escort" for "squawk"), so every one is tried and the
+   * closest wins; `heard` keeps the first, for the debrief.
+   */
+  bestMatch(tx, spec, kind) {
+    let best = null;
+    for (const text of [tx.text, ...(tx.alternatives || [])]) {
+      const r = match(text, spec, this.ctx, { kind });
+      const score = r.hardRatio * 1000 + r.score + (r.callsign ? 50 : 0);
+      if (!best || score > best.score) best = { text, r, score };
+    }
+    return best;
+  }
+
   async readback(spec, original, { model, timeout, clearance } = {}) {
     let attempts = 0, misses = 0, current = spec;
     const atcText = this.fill(original);
@@ -432,10 +447,10 @@ export class Engine {
         await this.atc(`{CALL}, I say again, ${stripCallsign(original)}`);
         continue;
       }
-      const r = match(tx.text, current, this.ctx, { kind: 'readback' });
-      for (const w of this.scenario.warn || []) if (w.re.test(tx.text.toLowerCase())) r.fillers.push(w.why);
-      if (r.hardRatio < 0.35 && looksLikeRequest(tx.text) && this.claude) throw new OffScript(tx);
-      const ev = this.log('readback', { atcText, text: tx.text, attempt: attempts + 1, latency: tx.latency, result: summarise(r), model: model ? this.fill(model) : null });
+      const { text, r } = this.bestMatch(tx, current, 'readback');
+      for (const w of this.scenario.warn || []) if (w.re.test(text.toLowerCase())) r.fillers.push(w.why);
+      if (r.hardRatio < 0.35 && looksLikeRequest(text) && this.claude) throw new OffScript(tx);
+      const ev = this.log('readback', { atcText, text, heard: text === tx.text ? null : tx.text, attempt: attempts + 1, latency: tx.latency, result: summarise(r), model: model ? this.fill(model) : null });
       if (!r.callsign) {
         await this.atc('Station reading back, say callsign');
         const tx2 = await this.waitPilot(this.settings.replyTimeout);
@@ -474,10 +489,10 @@ export class Engine {
         await this.atc(`{CALL}, I say again, ${stripCallsign(this.lastToPilot)}`);
         continue;
       }
-      const r = match(tx.text, items, this.ctx, { kind: 'call' });
-      for (const w of warn.concat(this.scenario.warn || [])) if (w.re.test(tx.text.toLowerCase())) r.fillers.push(w.why);
-      if (!initial && r.hardRatio < 0.35 && looksLikeRequest(tx.text) && this.claude) throw new OffScript(tx);
-      this.log('call', { id, text: tx.text, latency: tx.latency, result: summarise(r), model: model ? this.fill(model) : null });
+      const { text, r } = this.bestMatch(tx, items, 'call');
+      for (const w of warn.concat(this.scenario.warn || [])) if (w.re.test(text.toLowerCase())) r.fillers.push(w.why);
+      if (!initial && r.hardRatio < 0.35 && looksLikeRequest(text) && this.claude) throw new OffScript(tx);
+      this.log('call', { id, text, heard: text === tx.text ? null : tx.text, latency: tx.latency, result: summarise(r), model: model ? this.fill(model) : null });
       if (!r.callsign) {
         await this.atc(initial ? 'Station calling {UNIT}, say again your callsign' : 'Station calling, say again callsign');
         continue;
@@ -486,8 +501,9 @@ export class Engine {
       for (const item of r.hardMissing.filter(i => i.ask)) {
         await this.atc(item.ask);
         const tx2 = await this.waitPilot(this.settings.replyTimeout * 2);
-        const r2 = tx2 ? match(tx2.text, [item], this.ctx) : null;
-        this.log('answer', { text: tx2?.text || '', asked: item.label, ok: !!(r2 && !r2.hardMissing.length) });
+        const a2 = tx2 ? this.bestMatch(tx2, [item], 'call') : null;
+        const r2 = a2 && a2.r;
+        this.log('answer', { text: a2?.text || '', asked: item.label, ok: !!(r2 && !r2.hardMissing.length) });
         if (r2 && !r2.hardMissing.length) { item.matched = true; }
       }
       const still = r.hardMissing.filter(i => !i.ask && !i.matched);

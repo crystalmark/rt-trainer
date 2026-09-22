@@ -13,7 +13,8 @@ export const NOT_ABOVE = v => [
   P('not above', ['not above'], { fix: `not above altitude ${v} feet` }),
   P(`altitude ${v} feet`, [String(v)], { fix: `not above altitude ${v} feet` }),
 ];
-export const ROS = () => P('remain outside controlled airspace', ['remain outside controlled airspace'], {
+// "Remaining outside controlled airspace" is how most pilots say it back, and is just as correct.
+export const ROS = () => P('remain outside controlled airspace', ['remain outside controlled airspace', 'remaining outside controlled airspace'], {
   substitutes: ['zone', 'outside the zone', 'remain outside'],
   fix: 'remain outside controlled airspace',
   why: 'Read back the controller’s exact words. Controlled airspace includes the CTAs, not just the zone.',

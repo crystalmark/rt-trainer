@@ -7,6 +7,8 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
 - `js/normalize.js`: turns speech-recognition text and scenario patterns into one token stream
   (spoken numbers → digits, phonetic alphabet → letters, "3,000 ft" → "3000 feet"). Also
   `speakable()` for text-to-speech (QNH digit by digit, "three thousand feet", "decimal").
+  It also folds what the recogniser mishears (“escort”/“squat” → squawk, odd spellings of the alphabet) and drops
+  hesitation (`HESITATION`). Add new mishearings here with a test, rather than loosening the readback items.
 - `js/matcher.js`: `match(text, spec, ctx)` checks a transmission against readback items and
   returns missing hard/soft items, substitutions ("zone" for "controlled airspace"), order,
   fillers and a 0–100 score.
@@ -28,6 +30,8 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   Templates: `{CS}` full callsign, `{AB}` abbreviated, `{CALL}` whichever ATC is currently using,
   `{TYPE}`, `{UNIT}`, `{SIM}` a confusable callsign. Build items with `P()` and helpers in `common.js`.
   Always branch on `ctx.transponder` where handling differs.
+- `js/ptt.js` asks for five alternative transcripts and hands them all over; `engine.bestMatch()` scores every one
+  against the items expected and keeps the closest, recording the first as `heard` for the debrief.
 - `js/radio.js` (speech synthesis + Web Audio squelch/static/heterodyne). Voices are ranked by `voiceChoices()`
   (British first, Google/enhanced/premium preferred) and macOS novelty voices are excluded, or ATC ends up sounding
   like Zarvox. Radio noise has three levels and must stay well under the voice: the speech synthesiser can't be
@@ -87,5 +91,4 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   macOS offers a Scottish or Yorkshire voice.
 - Bluetooth hardware PTT (a BLE remote mapped to a key).
 - Server-side key proxy on crystalmark.co.uk (see docs/deploy.md).
-- Use speech-recognition alternatives (`maxAlternatives`) to pick the best-matching transcript.
 - Record sessions and replay your own audio in the debrief.

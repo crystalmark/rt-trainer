@@ -162,3 +162,29 @@ test('setting the squawk keeps the controller happy', async () => {
   assert.ok(!events.some(e => e.type === 'no-action'), 'nothing left undone');
   assert.ok(!events.filter(e => e.type === 'atc').some(t => /confirm squawk/.test(t.text)), 'so no chasing');
 });
+
+test("the recogniser's other guesses are matched too", async () => {
+  const scenario = SCENARIOS.find(s => s.id === 'leeds-transit');
+  const clock = fakeClock(4000);
+  const radio = fakeRadio(clock);
+  let handler = () => {};
+  const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(9),
+    settings: { trafficDensity: 'quiet', refusalBias: -1 }, onEvent: e => handler(e) });
+  const perfect = perfectPilot(engine);
+  let sent = false;
+  handler = ev => {
+    if (!sent && ev.kind === 'awaiting' && /squawk 5634/.test(ev.atcText || '')) {
+      sent = true;
+      sendWhenClear(engine, 'basic service 1000 remaining outside controlled airspace golf india alpha',
+        { alternatives: ['basic service squawk 5634 remaining outside controlled airspace golf india alpha'] });
+      return;
+    }
+    perfect(ev);
+  };
+  const events = await engine.start();
+  const rb = events.find(e => e.type === 'readback' && /squawk 5634/.test(e.atcText || ''));
+  assert.ok(rb, 'the squawk readback happened');
+  assert.match(rb.text, /squawk 5634/, 'the better guess was used');
+  assert.match(rb.heard || '', /1000/, 'and the first one is kept for the debrief');
+  assert.equal(events.filter(e => e.type === 'correction').length, 0, 'so no correction was needed');
+});

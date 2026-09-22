@@ -106,7 +106,11 @@ site's S3 bucket through CloudFront: `deploy/deploy.sh` publishes it (after a on
 See `docs/deploy.md`.
 
 ## Known limits
-- Chrome's speech recognition runs on Google's servers, so transmitting needs data signal.
+- Chrome's speech recognition runs on Google's servers, so transmitting needs data signal. It is also poor at the
+  words that matter most: “squawk” often comes back as “escort” or “squat”, and the phonetic alphabet wanders. Three
+  things make up for it: every transcript Chrome offers is matched against what the controller is expecting, not
+  just the first; the common mishearings are folded back (“escort” → “squawk”, “alfie” → Alpha); and hesitation
+  sounds (er, erm, uh) are ignored. The debrief says when it took a different guess, and counts the ers.
 - The synthesised voices can't be band-limited like a real radio; static and squelch clicks go around them. The
   noise and the voice come out of different audio paths and can't be mixed, so on some devices (Android especially)
   the voice is much quieter than the noise: *Radio noise* has Off, Quiet and Normal, and Quiet is the default.

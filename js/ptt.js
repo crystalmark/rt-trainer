@@ -9,6 +9,7 @@ export class PushToTalk {
     this.keyed = false;
     this.finalText = '';
     this.interimText = '';
+    this.segments = [];
     this.enabled = false;
   }
 
@@ -33,15 +34,20 @@ export class PushToTalk {
     this.rec.lang = 'en-GB';
     this.rec.continuous = true;
     this.rec.interimResults = true;
-    this.rec.maxAlternatives = 3;
+    this.rec.maxAlternatives = 5;
     this.rec.onresult = (e) => {
       let fin = '', interim = '';
+      const segments = [];                       // each final piece, with the alternatives Chrome offers for it
       for (let i = 0; i < e.results.length; i++) {
         const r = e.results[i];
-        if (r.isFinal) fin += r[0].transcript + ' ';
-        else interim += r[0].transcript + ' ';
+        if (r.isFinal) {
+          fin += r[0].transcript + ' ';
+          const alts = [];
+          for (let a = 0; a < r.length; a++) { const t = r[a].transcript.trim(); if (t && !alts.includes(t)) alts.push(t); }
+          segments.push(alts);
+        } else interim += r[0].transcript + ' ';
       }
-      this.finalText = fin; this.interimText = interim;
+      this.finalText = fin; this.interimText = interim; this.segments = segments;
       this.onInterim?.((fin + interim).trim());
     };
     this.rec.onend = () => { this.recRunning = false; this.endResolve?.(); };
@@ -71,7 +77,7 @@ export class PushToTalk {
     if (!this.enabled || this.keyed) return;
     this.keyed = true;
     this.keyAt = performance.now();
-    this.finalText = ''; this.interimText = '';
+    this.finalText = ''; this.interimText = ''; this.segments = [];
     this.onDown?.();
     try { this.rec.start(); this.recRunning = true; } catch { /* already running */ }
   }
@@ -84,8 +90,22 @@ export class PushToTalk {
     try { this.rec.stop(); } catch { /* not running */ }
     await Promise.race([ended, new Promise(r => setTimeout(r, 1500))]);
     const text = (this.finalText || this.interimText).trim();
-    this.onUp?.(text, { heldMs: Math.round(held), error: this.lastError || null });
+    this.onUp?.(text, { heldMs: Math.round(held), error: this.lastError || null, alternatives: this.candidates(text) });
     this.lastError = null;
+  }
+
+  /**
+   * Everything the recogniser thought it heard, best first. Chrome often puts the right words second or third
+   * ("escort" for "squawk"), so the engine matches all of them against what the controller is expecting.
+   */
+  candidates(primary, limit = 8) {
+    let out = [''];
+    for (const alts of this.segments || []) {
+      const next = [];
+      for (const sofar of out) for (const alt of alts) if (next.length < limit) next.push(sofar ? `${sofar} ${alt}` : alt);
+      out = next.length ? next : out;
+    }
+    return out.map(t => t.trim()).filter(t => t && t !== primary);
   }
 
   meter() {
