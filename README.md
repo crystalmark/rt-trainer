@@ -58,8 +58,9 @@ deploying, use Chrome remote debugging port-forwarding (`chrome://inspect` → P
 
 ## Deploying
 
-Plain static files, no build step, all paths relative, so it works from a subfolder such as
-`https://crystalmark.co.uk/rt/`. It must be served over HTTPS. See `docs/deploy.md`.
+Plain static files, no build step, all paths relative. It's served at `https://crystalmark.co.uk/rt/` from the
+site's S3 bucket through CloudFront: `deploy/deploy.sh` publishes it (after a one-off `deploy/cloudfront.sh`).
+See `docs/deploy.md`.
 
 ## Known limits
 - Chrome's speech recognition runs on Google's servers, so transmitting needs data signal.

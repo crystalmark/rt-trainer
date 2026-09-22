@@ -32,10 +32,14 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   (`tests/engine.test.mjs` does this automatically for everything in `SCENARIOS`).
 - Frequencies/VRPs must come from the UK AIP or the airfield; squawks and pressures may be invented.
 - Keep the engine DOM-free so it stays testable in Node.
+- crystalmark.co.uk is one browser origin shared with Flight Log and Pollyglot: service-worker caches are named and
+  cleared by the `rt-trainer-` prefix, localStorage keys start `rt.`. New JS files go in `FILES` in `sw.js` (tested).
 
 ## Commands
 - `npm test`: Node test runner (no install needed).
 - `python3 -m http.server 8080`: serve locally; microphone needs localhost or HTTPS.
+- `deploy/deploy.sh`: tests, then publish to https://crystalmark.co.uk/rt/ (S3 + CloudFront, not the Lightsail box;
+  see docs/deploy.md). `--dryrun` to preview.
 
 ## Ideas / backlog
 - London Information scenario for Yorkshire local flying (confirm the frequency for the sector first).
