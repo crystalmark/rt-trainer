@@ -2,6 +2,9 @@
 // push-to-talk and (optionally) Claude.
 import { Engine } from './engine.js';
 import { SCENARIOS } from './scenarios/index.js';
+import { AREAS } from './areas/index.js';
+import { parseRoute, planRoute, routeText } from './route.js';
+import { customScenario } from './scenarios/custom.js';
 import { PROFILES } from './config.js';
 import { BrowserRadio, realClock } from './radio.js';
 import { PushToTalk } from './ptt.js';
@@ -20,13 +23,19 @@ const state = {
   profileId: store.get('profileId', PROFILES[0].id),
   scenarioId: store.get('scenarioId', SCENARIOS[0].id),
   showText: store.get('showText', false),
-  engine: null, radio: null, ptt: null, lastEnd: null,
+  routes: store.get('routes', { leeds: { text: 'Skipton to Wetherby via Salts Mill and Eccup Reservoir', alt: 2800 } }),
+  engine: null, radio: null, ptt: null, lastEnd: null, built: null,
 };
 const DELAYS = { fast: [0.3, 1], normal: [0.4, 1.6], busy: [1, 3] };
+// "Your own route" cards, one per area: the scenario is built from the route when you ask for a briefing.
+const CUSTOM = AREAS.map(area => ({ id: `custom-${area.id}`, area, title: `${area.name}: your own route`,
+  subtitle: 'Describe a route: ATC works out the clearance, the VRPs you report and where you leave.', unit: area.unit, freq: area.freq }));
+const CHOICES = [...SCENARIOS, ...CUSTOM];
 
 function show(id) { for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== id; window.scrollTo(0, 0); }
 const profile = () => state.profiles.find(p => p.id === state.profileId) || state.profiles[0];
-const scenario = () => SCENARIOS.find(s => s.id === state.scenarioId) || SCENARIOS[0];
+const choice = () => CHOICES.find(s => s.id === state.scenarioId) || SCENARIOS[0];
+const scenario = () => state.built || choice();
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // ---------------- setup ----------------
@@ -52,13 +61,82 @@ function renderSetup() {
       store.set('profiles', state.profiles); renderSetup();
     });
   });
-  $('scenarios').innerHTML = SCENARIOS.map(s => `
+  $('scenarios').innerHTML = CHOICES.map(s => `
     <button class="card" type="button" data-s="${s.id}" aria-pressed="${s.id === state.scenarioId}">
       <b>${esc(s.title)}</b><span>${esc(s.subtitle)}</span><span class="mono">${esc(s.unit)} · ${esc(s.freq)}</span>
     </button>`).join('');
+  renderRoutePanel();
   const h = store.get('history', []);
   $('history-block').hidden = !h.length;
   $('history').innerHTML = h.slice(0, 8).map(x => `<li>${esc(x.date)} · ${esc(x.title)} · ${esc(x.reg)}: ${x.stats.readbacksRightFirstTime}/${x.stats.readbacks} readbacks right first time, score ${x.stats.averageScore ?? '–'}</li>`).join('');
+}
+
+// ---------------- your own route ----------------
+function renderRoutePanel() {
+  const { area } = choice();
+  $('route-panel').hidden = !area;
+  if (!area) return;
+  const r = state.routes[area.id] || { text: '', alt: 2500 };
+  $('route-text').value = r.text;
+  $('route-alt').value = r.alt;
+  $('route-places-title').textContent = `Places I know around ${area.name}`;
+  const places = [...area.places].sort((a, b) => (b.kind === 'vrp') - (a.kind === 'vrp') || a.name.localeCompare(b.name));
+  $('route-places').innerHTML = places.map(p => `<button type="button" class="chip${p.kind === 'vrp' ? ' vrp' : ''}" data-place="${esc(p.name)}">${esc(p.name)}${p.kind === 'vrp' ? '<b>VRP</b>' : ''}</button>`).join('');
+  checkRoute();
+}
+
+/**
+ * Read the route box, show what ATC will make of it, and remember it. An altitude typed in the route
+ * ("at 2800 ft") fills the altitude box when it came from the text. Returns { points, altitude } if it can be flown.
+ */
+function checkRoute({ fromText = false } = {}) {
+  const { area } = choice();
+  if (!area) return null;
+  const text = $('route-text').value;
+  const parsed = parseRoute(text, area);
+  if (fromText && parsed.altitude) $('route-alt').value = parsed.altitude;
+  const alt = Number($('route-alt').value) || 2500;
+  state.routes[area.id] = { text, alt };
+  store.set('routes', state.routes);
+  if (!text.trim()) {
+    $('route-check').innerHTML = '<p class="hint">Where you start, any points on the way and where you finish, e.g. “Skipton to Wetherby via Salts Mill and Eccup Reservoir at 2800 ft”.</p>';
+    return null;
+  }
+  const out = parsed.unknown.map(u => `<p class="warn">I don’t know “${esc(u.text)}”.${u.suggestions.length
+    ? ` Did you mean${u.suggestions.map(n => ` <button type="button" class="chip" data-swap="${esc(u.text)}" data-to="${esc(n)}">${esc(n)}</button>`).join('')}?`
+    : ' Pick a place from the list below.'}</p>`);
+  out.push(...parsed.notes.map(n => `<p class="hint">${esc(n)}</p>`));
+  const plan = planRoute(area, parsed.points, alt);
+  if (parsed.points.length) out.push(`<div class="path">${esc(routeText(parsed.points, alt))}</div>`);
+  if (plan.errors.length) out.push(...plan.errors.map(e => `<p class="warn">${esc(e)}</p>`));
+  else {
+    const T = plan.transit, p = profile();
+    const lines = [`${Math.round(plan.total)} nm, about ${Math.round(plan.total / p.speedKt * 60)} min at ${p.speedKt} kt.`];
+    if (T) lines.push(`Zone transit: into ${T.entryVolume.name} after ${Math.round(T.sIn)} nm${T.via ? `, cleared via ${T.via.place.name}` : ''}; out to the ${T.exitSide} after ${Math.round(T.sOut)} nm.`,
+      T.reports.length ? `You’ll report ${T.reports.map(r => r.place.name).join(', ')}.` : 'No reporting points on the way: you’ll report leaving controlled airspace.');
+    else lines.push(`Stays outside controlled airspace (${plan.closest.d.toFixed(1)} nm from ${plan.closest.volume.name} at the closest): a Basic Service flight.`);
+    lines.push(...plan.under.map(u => `Passes under ${u.volume.name}, base ${u.volume.base} ft: only ${u.gap} ft above you.`), ...plan.warnings);
+    out.push(`<ul>${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>`);
+  }
+  $('route-check').innerHTML = out.join('');
+  return !plan.errors.length && !parsed.unknown.length ? { points: parsed.points, altitude: alt } : null;
+}
+
+function bindRoute() {
+  let timer = null;
+  $('route-text').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => checkRoute({ fromText: true }), 250); });
+  $('route-alt').addEventListener('input', () => checkRoute());
+  $('route-check').addEventListener('click', e => {
+    const b = e.target.closest('[data-swap]'); if (!b) return;
+    $('route-text').value = $('route-text').value.replace(b.dataset.swap, b.dataset.to);
+    checkRoute({ fromText: true });
+  });
+  $('route-places').addEventListener('click', e => {
+    const b = e.target.closest('[data-place]'); if (!b) return;
+    const t = $('route-text').value.trim().replace(/[,;]$/, '');
+    $('route-text').value = t ? `${t}, ${b.dataset.place}` : b.dataset.place;
+    checkRoute({ fromText: true });
+  });
 }
 
 function bindSetup() {
@@ -70,6 +148,7 @@ function bindSetup() {
   for (const [id, d] of Object.entries(checks)) { $(id).checked = store.get(id, d); $(id).addEventListener('change', () => store.set(id, $(id).checked)); }
   $('support-warning').hidden = PushToTalk.supported();
   $('to-brief').addEventListener('click', renderBrief);
+  bindRoute();
   bindMicTest();
 }
 
@@ -102,7 +181,14 @@ function engineCtxPreview() {
   return { reg: p.reg, abbr: `${letters[0]}-${letters.slice(-2)}`, type: p.type, transponder: p.transponder, speedKt: p.speedKt };
 }
 function renderBrief() {
-  const s = scenario(), p = profile();
+  const c = choice(), p = profile();
+  let s = c;
+  if (c.area) {                                   // your own route: build it now, with fresh QNH, squawk and surprises
+    const route = checkRoute();
+    if (!route) { show('setup'); $('route-panel').scrollIntoView({ block: 'center' }); toast('That route can’t be flown yet: see the notes under it.', 'warn'); return; }
+    s = customScenario(c.area, route);
+  }
+  state.built = s;
   $('brief-aircraft').textContent = `${p.reg} · ${p.transponder ? 'Mode S' : 'No transponder'}`;
   $('brief-title').textContent = s.title;
   $('brief-sub').textContent = s.subtitle;
@@ -157,6 +243,7 @@ async function begin() {
 function resetFlightUi(p) {
   $('log').innerHTML = ''; $('cue').textContent = ''; $('leg-label').textContent = '—'; $('leg-time').textContent = '--:--';
   $('leg-bar').style.width = '0'; $('mine').hidden = true; $('toast').hidden = true;
+  $('navdata').hidden = true; $('nd-alt').textContent = '----'; $('nd-qnh').textContent = '----'; $('nd-next').textContent = '';
   $('rh-reg').textContent = p.reg;
   $('rh-xpdr').classList.toggle('off', !p.transponder);
   $('rh-squawk').textContent = p.transponder ? '7000' : 'NONE';
@@ -171,9 +258,13 @@ function onEngineEvent(ev) {
     case 'radioState': {
       const st = ev.state; if (st.unit) $('rh-unit').textContent = st.unit; if (st.freq) $('rh-freq').textContent = Number(st.freq).toFixed(3);
       if ('squawk' in st && profile().transponder) $('rh-squawk').textContent = st.squawk || '7000';
+      if (st.qnh) $('nd-qnh').textContent = st.qnh;
       break;
     }
-    case 'leg': startLeg(ev); break;
+    case 'leg':                                   // on your own route the nav events keep the time and the bar
+      if (ev.nav) { $('leg-label').textContent = ev.label || ''; if (ev.cue) $('cue').textContent = ev.cue; } else startLeg(ev);
+      break;
+    case 'nav': showNav(ev); break;
     case 'cue': case 'position': $('cue').textContent = ev.text || ev.cue || ev.label || ''; break;
     case 'toast': if (ev.text && (!/without pressing PTT/.test(ev.text) || $('o-hot').checked)) toast(ev.text, ev.level); break;
     case 'end': onEnd(ev); break;
@@ -209,6 +300,16 @@ function startLeg({ label, ms, cue }) {
     if (left <= 0) clearInterval(legTimer);
   };
   tick(); legTimer = setInterval(tick, 1000);
+}
+
+// Your own route: altitude, QNH, the next waypoint and the flight time to it, like the moving map in the aircraft.
+function showNav(n) {
+  clearInterval(legTimer);
+  $('navdata').hidden = false;
+  $('nd-alt').textContent = n.altitude;
+  $('nd-next').textContent = n.orbiting ? 'Orbiting' : n.next ? `Next ${n.next.name} ${n.next.nm.toFixed(1)} nm` : 'Route complete';
+  $('leg-time').textContent = n.next && !n.orbiting ? fmt(n.next.sec) : '--:--';
+  $('leg-bar').style.width = `${Math.min(100, 100 * n.s / n.total)}%`;
 }
 
 function lampLoop() {

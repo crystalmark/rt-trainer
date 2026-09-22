@@ -50,25 +50,26 @@ const GA_TYPES = ['PA28', 'Cessna 172', 'C42', 'Robin', 'Eurostar', 'Grumman'];
 function pick(s, a) { return s.pick(a); }
 
 export function leedsTraffic(s, { similar }) {
+  const qnh = s.ctx.qnh || 1017;              // your route sets the flight's QNH; the scripted Leeds flights use 1017
   const air = pick(s, ['Channex 47', 'Easy 64 Kilo', 'Ryanair 2 Kilo Papa', 'Tomjet 5 Charlie', 'KLM 17 Mike', 'Channex 12']);
   const ga = pick(s, GA); const gab = abbr(ga);
   const hdg = pick(s, ['140', '100', '350', '210']);
   const options = [
     [[air, `Leeds Radar, ${air}, descending flight level 70, information Delta`],
-     ['atc', `${air}, Leeds Radar, identified, descend to altitude 4000 feet, QNH 1017, vectors ILS runway 32`],
-     [air, `Descend altitude 4000 feet, QNH 1017, vectors ILS 32, ${air}`]],
+     ['atc', `${air}, Leeds Radar, identified, descend to altitude 4000 feet, QNH ${qnh}, vectors ILS runway 32`],
+     [air, `Descend altitude 4000 feet, QNH ${qnh}, vectors ILS 32, ${air}`]],
     [['atc', `${air}, turn left heading ${hdg}, reduce speed 180 knots`], [air, `Left heading ${hdg}, speed 180 knots, ${air}`]],
     [['atc', `${air}, contact Leeds Tower 120.305`], [air, `Tower 120.305, ${air}`]],
     [[air, `Leeds Radar, ${air}, passing altitude 3500 feet, climbing flight level 70`],
      ['atc', `${air}, Leeds Radar, identified, climb flight level 110`], [air, `Climb flight level 110, ${air}`]],
     [[ga, `Leeds Radar, ${ga}, request Basic Service`], ['atc', `${ga}, Leeds Radar, pass your message`],
-     [ga, `${ga}, ${pick(s, GA_TYPES)}, Sherburn to Blackpool, overhead Wetherby, altitude 2400 feet, QNH 1017, VFR, remaining outside controlled airspace`],
+     [ga, `${ga}, ${pick(s, GA_TYPES)}, Sherburn to Blackpool, overhead Wetherby, altitude 2400 feet, QNH ${qnh}, VFR, remaining outside controlled airspace`],
      ['atc', `${gab}, Basic Service, squawk 5626`], [ga, `Basic Service, squawk 5626, ${gab}`]],
     [['atc', `${gab}, traffic is a helicopter, 3 miles north of you, southbound, altitude 1500 feet`], [ga, `Looking, ${gab}`]],
     [['atc', `${similar}, report Harrogate`, { similar }], [similar, `Wilco, ${similar}`]],
     [['Police 51', 'Leeds Radar, Police 51, lifted Carr Gate, request zone entry to operate over Bradford, not above altitude 2000 feet'],
-     ['atc', 'Police 51, cleared to enter the Leeds control zone, not above altitude 2000 feet, QNH 1017, report operating'],
-     ['Police 51', 'Cleared to enter, not above altitude 2000 feet, QNH 1017, wilco, Police 51']],
+     ['atc', `Police 51, cleared to enter the Leeds control zone, not above altitude 2000 feet, QNH ${qnh}, report operating`],
+     ['Police 51', `Cleared to enter, not above altitude 2000 feet, QNH ${qnh}, wilco, Police 51`]],
     [['atc', `${air}, radar vectors complete, cleared ILS approach runway 32, report established`], [air, `Cleared ILS 32, wilco, ${air}`]],
   ];
   return pick(s, options);

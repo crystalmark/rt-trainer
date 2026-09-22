@@ -30,12 +30,15 @@ export class Claude {
 
   async atc({ scenario, ctx, events, history, pilot }) {
     const briefing = scenario.briefing ? scenario.briefing(ctx).join(' ') : '';
+    const places = scenario.places ? `Published VRPs: ${scenario.places.filter(p => p.kind === 'vrp').map(p => p.name).join(', ')}. ` +
+      `Other landmarks you may use for routing and positions: ${scenario.places.filter(p => p.kind !== 'vrp').map(p => p.name).join(', ')}. ` +
+      'Never call anything else a VRP, and never invent frequencies. ' : '';
     const recent = events.filter(e => ['atc', 'pilot', 'traffic', 'position', 'cue', 'note'].includes(e.type))
       .slice(-30).map(e => `[${e.type}${e.speaker && e.speaker !== 'atc' ? ' ' + e.speaker : ''}] ${e.text || e.label || ''}`).join('\n');
     const system = `You are the ${ctx.unit} controller on ${ctx.freq} in a UK radiotelephony training simulator. ` +
       `Speak exactly as a real UK controller would, using CAP 413 phraseology: short, precise, no chit-chat. ` +
       `The pilot is ${ctx.reg} (abbreviated ${ctx.abbr}), a ${ctx.type}, ${ctx.transponder ? 'with a Mode S transponder' : 'with no transponder'}, flying VFR at about ${ctx.speedKt} kt. ` +
-      `Scenario: ${scenario.title}. ${briefing} ` +
+      `Scenario: ${scenario.title}. ${briefing} ${places}` +
       (/radio$/i.test(ctx.unit) ? 'You are an Air/Ground operator: you cannot give clearances or instructions, only information. ' : '') +
       (/information$/i.test(ctx.unit) ? 'You are a FISO giving a Basic Service: information only, no clearances. ' : '') +
       `The pilot has left the training script (for example a diversion, weather, a change of plan or an emergency). Handle it realistically: ` +

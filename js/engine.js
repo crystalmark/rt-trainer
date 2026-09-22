@@ -90,7 +90,7 @@ export class Engine {
   }
   toSpeech(display) {
     let s = display.replace(/\b([A-Z])-([A-Z]{2,4})\b/g, (m) => phoneticCallsign(m));
-    for (const [re, rep] of PRONOUNCE) s = s.replace(re, rep);
+    for (const [re, rep] of [...PRONOUNCE, ...(this.scenario.pronounce || [])]) s = s.replace(re, rep);
     return speakable(s);
   }
 
@@ -237,6 +237,10 @@ export class Engine {
       expect: o => e.expect(o),
       leg: (label, nm, o) => e.leg(label, nm, o),
       at: (label, cue) => { e.emit('position', { label, cue }); e.log('position', { label }); },
+      fly: plan => e.fly(plan),
+      reach: (s, o) => e.reach(s, o),
+      hold: s => { if (e.nav) e.nav.limit = s == null ? Infinity : Math.max(0, s); },
+      position: () => e.nav ? { ...e.nav.plan.posAt(e.nav.s), s: e.nav.s } : null,
       pause: sec => e.sleep(sec * 1000),
       end: summary => { e.summary = summary; },
       settings: e.settings,
@@ -249,6 +253,52 @@ export class Engine {
     this.emit('leg', { label, nm, ms, cue, startedAt: this.now() });
     if (cue) this.log('cue', { text: cue });
     await this.sleep(ms);
+  }
+
+  // ---------- flying a planned route (your own routes) ----------
+  // The aircraft moves continuously: at the chosen time scale while the frequency is quiet, in real time while
+  // anyone is talking, so an exchange costs the flight time it would in the air. hold(s) stops it short of a
+  // point along the route, where it orbits (outside the zone until cleared, say).
+  fly(plan) {
+    const looping = !!this.nav;
+    this.nav = { plan, s: 0, limit: Infinity, last: this.now(), emitted: -Infinity, orbiting: false };
+    if (!looping) this.navLoop();
+  }
+
+  async navLoop() {
+    while (this.running && this.nav) {
+      await this.clock.sleep(this.clock.tick || 250);
+      this.navStep();
+    }
+  }
+
+  navStep() {
+    const n = this.nav, now = this.now(), dt = now - n.last;
+    n.last = now;
+    if (this.paused || !this.running) return;
+    const busy = this.radio.busy || this.channelLocked || this.waiter || this.keyed || this.exchangeActive;
+    const cap = Math.min(n.limit, n.plan.total);
+    if (n.s < cap) n.s = Math.min(cap, n.s + this.ctx.speedKt * (busy ? 1 : this.settings.timeScale) * dt / 3600000);
+    n.orbiting = n.s >= cap - 1e-6 && cap < n.plan.total;
+    if (now - n.emitted >= 1000) { n.emitted = now; this.emit('nav', this.navState()); }
+  }
+
+  /** Where the aircraft is, what's next and how long until it (flight time at your speed). */
+  navState() {
+    const n = this.nav, p = n.plan.posAt(n.s);
+    const next = n.plan.points.find(w => w.s > n.s + 0.05);
+    const left = next ? next.s - n.s : 0;
+    return { s: n.s, total: n.plan.total, lat: p.lat, lon: p.lon, x: p.x, y: p.y, track: p.track, orbiting: n.orbiting,
+      altitude: n.plan.altitude, next: next ? { name: next.place.name, nm: left, sec: left / this.ctx.speedKt * 3600 } : null };
+  }
+
+  /** Wait until the aircraft is s nm along the route (or at its hold point, if that comes first). */
+  async reach(s, { label, cue } = {}) {
+    const n = this.nav, goal = Math.min(s, n.plan.total, n.limit);
+    const left = Math.max(0, goal - n.s);
+    this.emit('leg', { label, nm: left, ms: left / this.ctx.speedKt * 3600000 / this.settings.timeScale, cue, nav: true });
+    if (cue) this.log('cue', { text: cue });
+    while (n.s < goal - 1e-6) await this.sleep(this.clock.tick || 250);
   }
 
   async atc(text, { readback = null, model = null, timeout, clearance = false, reply = null, hold = true } = {}) {

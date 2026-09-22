@@ -34,6 +34,19 @@
   <section class="block">
     <h2>Scenario</h2>
     <div id="scenarios" class="cards"></div>
+    <div id="route-panel" class="route" hidden>
+      <div class="opts">
+        <label for="route-text" class="wide">Your route
+          <input type="text" id="route-text" autocomplete="off" spellcheck="false" placeholder="Skipton to Wetherby via Salts Mill and Eccup Reservoir"></label>
+        <label for="route-alt">Altitude (ft, on QNH)
+          <input type="number" id="route-alt" min="1000" max="4900" step="100" value="2500" inputmode="numeric"></label>
+      </div>
+      <div id="route-check" class="route-check" aria-live="polite"></div>
+      <details class="edit">
+        <summary id="route-places-title">Places I know</summary>
+        <div id="route-places" class="chips"></div>
+      </details>
+    </div>
   </section>
 
   <section class="block">
@@ -117,6 +130,7 @@
   </div>
 
   <section class="nav">
+    <div id="navdata" class="navdata mono" hidden><span>ALT <b id="nd-alt">----</b></span><span>QNH <b id="nd-qnh">----</b></span><span id="nd-next"></span></div>
     <div class="leg"><span id="leg-label">—</span><span id="leg-time" class="mono">--:--</span></div>
     <div class="bar"><span id="leg-bar"></span></div>
     <p id="cue" class="cue"></p>

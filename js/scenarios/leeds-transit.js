@@ -1,15 +1,19 @@
 import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, TRAFFIC_ACK, details, initialCall, leedsTraffic } from './common.js';
+import { areaById } from '../areas/index.js';
+
+const SALTS_MILL = ['salts mill', 'salt mill', 'saltaire'];
 
 export default {
   id: 'leeds-transit',
   title: 'Leeds zone transit',
-  subtitle: 'Keighley → Eccup Reservoir, en route Sherburn',
+  subtitle: 'Salts Mill → Eccup Reservoir, en route Sherburn',
   unit: 'Leeds Radar',
   freq: '134.580',
   traffic: leedsTraffic,
+  places: areaById('leeds').places,
   briefing: ctx => [
     `${ctx.reg} (${ctx.type}${ctx.transponder ? ', Mode S' : ', no transponder'}), Kirkbride to Sherburn in Elmet, 1 POB. Flight details emailed to Leeds ATC this morning.`,
-    'You start about 12 nm north-west of the Leeds CTR near Skipton, 2800 ft on 1016. Plan: transit via the Keighley and Eccup Reservoir VRPs.',
+    'You start about 12 nm north-west of the Leeds CTR near Skipton, 2800 ft on 1016, under CTA 3 (base 3000 ft). Plan: past Keighley, then through the zone via the Salts Mill and Eccup Reservoir VRPs.',
     'Plan B if refused: route west of the zone via Oxenhope.',
     'Leeds Radar 134.580. Runway 32 in use, airliners arriving from the south-east.',
   ],
@@ -22,7 +26,7 @@ export default {
     const said = await initialCall(s, { unitName: 'Leeds Radar', det,
       requestItems: [P('request', ['transit', 'basic service', 'zone', 'request'], { soft: true, why: 'State your request on first contact.' })],
       model: 'Leeds Radar, {CS}, request Basic Service and zone transit',
-      detailsModel: '{CS}, {TYPE}, Kirkbride to Sherburn, 3 miles south of Skipton, altitude 2800 feet, QNH 1016, VFR, ' + (ctx.transponder ? '' : 'no transponder, ') + 'request transit via Keighley and Eccup Reservoir, flight details emailed' });
+      detailsModel: '{CS}, {TYPE}, Kirkbride to Sherburn, 3 miles south of Skipton, altitude 2800 feet, QNH 1016, VFR, ' + (ctx.transponder ? '' : 'no transponder, ') + 'request transit via Salts Mill and Eccup Reservoir, flight details emailed' });
     const saidNoXpdr = said && said.items.some(i => i.key === 'noxpdr' && i.matched);
 
     if (ctx.transponder) {
@@ -52,23 +56,23 @@ export default {
     }
 
     const rb = [
-      P('cleared to enter', ['cleared to enter', 'cleared into', 'cleared'], { fix: 'cleared to enter the Leeds control zone via Keighley' }),
+      P('cleared to enter', ['cleared to enter', 'cleared into', 'cleared'], { fix: 'cleared to enter the Leeds control zone via Salts Mill' }),
       P('control zone', ['control zone', 'zone', 'controlled airspace'], { soft: true }),
-      P('via Keighley', ['keighley'], { fix: 'via Keighley' }),
+      P('via Salts Mill', SALTS_MILL, { fix: 'via Salts Mill' }),
       P('VFR', ['vfr'], { fix: 'VFR' }),
       ...NOT_ABOVE(3000),
       QNH(1017),
-      P('route Eccup Reservoir', ['eccup'], { fix: 'route Keighley, Eccup Reservoir' }),
+      P('route Eccup Reservoir', ['eccup'], { fix: 'route Salts Mill, Eccup Reservoir' }),
       WILCO(),
     ];
     await s.atc((ctx.transponder ? '{CALL}, identified 5 miles north-west of Keighley. ' : '{CALL}, ') +
-      'Cleared to enter the Leeds control zone via Keighley, VFR, not above altitude 3000 feet, Leeds QNH 1017. Route Keighley, Eccup Reservoir. Report Keighley',
-      { readback: rb, clearance: true, model: 'Cleared to enter the Leeds control zone via Keighley, VFR, not above altitude 3000 feet, QNH 1017, route Keighley, Eccup Reservoir, wilco, {CALL}' });
+      'Cleared to enter the Leeds control zone via Salts Mill, VFR, not above altitude 3000 feet, Leeds QNH 1017. Route Salts Mill, Eccup Reservoir. Report Salts Mill',
+      { readback: rb, clearance: true, model: 'Cleared to enter the Leeds control zone via Salts Mill, VFR, not above altitude 3000 feet, QNH 1017, route Salts Mill, Eccup Reservoir, wilco, {CALL}' });
     s.note('QNH changed from 1016 to 1017 in the clearance: the altimeter should be reset.');
 
-    await s.leg('Keighley', 3);
-    await s.expect({ id: 'keighley', cue: 'Overhead Keighley.', nudge: '{CALL}, report your position',
-      items: [P('Keighley', ['keighley'])], model: '{CALL}, Keighley' });
+    await s.leg('Salts Mill', 4);
+    await s.expect({ id: 'salts-mill', cue: 'At Salts Mill.', nudge: '{CALL}, report your position',
+      items: [P('Salts Mill', SALTS_MILL)], model: '{CALL}, Salts Mill' });
     await s.atc(`{CALL}, roger, ${ctx.transponder ? 'radar ' : ''}control service, report Eccup Reservoir`, {
       readback: [P('control service', ['control service'], { fix: `${ctx.transponder ? 'radar ' : ''}control service` }), WILCO()],
       model: `${ctx.transponder ? 'Radar c' : 'C'}ontrol service, wilco, {CALL}` });

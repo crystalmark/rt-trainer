@@ -1,4 +1,5 @@
 import { P, WILCO, SQUAWK, BASIC, ROS, TRAFFIC_ACK, details, initialCall, leedsTraffic } from './common.js';
+import { areaById } from '../areas/index.js';
 
 export default {
   id: 'leeds-basic',
@@ -7,6 +8,7 @@ export default {
   unit: 'Leeds Radar',
   freq: '134.580',
   traffic: leedsTraffic,
+  places: areaById('leeds').places,
   briefing: ctx => [
     `${ctx.reg} (${ctx.type}${ctx.transponder ? ', Mode S' : ', no transponder'}), local flight from home towards Burnley, staying outside controlled airspace.`,
     'You want a Basic Service from Leeds Radar while you pass close to the western edge of the CTR.',

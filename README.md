@@ -11,12 +11,29 @@ Built for G-CLHP (flexwing, no transponder) and G-CZIA (QuikR, Mode S/C); both e
 
 | Scenario | Unit | What it drills |
 |---|---|---|
-| Leeds zone transit | Leeds Radar 134.580 | Keighley → Eccup Reservoir. Clearance readbacks, delays, orbits, traffic info, QNH changes, and refusals ("remain outside controlled airspace" / "confirm you will not enter controlled airspace"). Different handling with and without a transponder. |
+| Leeds zone transit | Leeds Radar 134.580 | Salts Mill → Eccup Reservoir. Clearance readbacks, delays, orbits, traffic info, QNH changes, and refusals ("remain outside controlled airspace" / "confirm you will not enter controlled airspace"). Different handling with and without a transponder. |
 | Leeds Basic Service | Leeds Radar 134.580 | Skirting the west of the zone. Mostly listening; boundary warnings; position requests. |
 | Edinburgh zone transit | Edinburgh Approach 121.205 | Musselburgh → Kirkcaldy Harbour. Holding outside, asking for height over the Forth, hand-off to Scottish Information. |
 | Carlisle arrival | Carlisle Radio 123.605 | Air/Ground: no clearances. Overhead join and circuit calls. One run in four the radio isn't staffed and you must switch to "Carlisle Traffic" blind calls. |
 | Carlisle departure | Carlisle Radio 123.605 | Radio check, taxi and line-up announcements, leaving the ATZ. |
 | Scottish Information | 119.875 | Carlisle → East Fortune, ~75 nm. A long listening watch with position reports: the "get on with something else and listen for your callsign" mode. |
+| Leeds: your own route | Leeds Radar 134.580 | Any route you describe. See below. |
+
+## Your own route (Leeds so far)
+
+Pick **Leeds: your own route** and describe the flight, e.g. “Skipton to Wetherby via Salts Mill and Eccup
+Reservoir at 2800 ft” (or arrows, or commas). The app lays it over the Leeds airspace at your altitude and tells
+you what ATC will make of it: where you enter and leave controlled airspace, the point you'll be cleared via, the
+points you'll report, and anything you pass close underneath (“CTA 3, base 3000 ft: only 200 ft above you”). Typos
+are forgiven (“Riddlesdon”), and names it doesn't know are flagged with suggestions; tap a place in the list to add it.
+
+A route through the zone becomes a transit, with the same checks and surprises as the scripted one; a route that
+stays outside becomes a Basic Service flight with a warning if you pass close to the boundary. The aircraft moves
+along the route the whole time (in real time while anyone is talking), holds outside the zone until you're
+cleared, and the flight screen shows your altitude, QNH, the next waypoint and the time to it.
+
+Routes must start and finish outside controlled airspace, at least 4 nm before it, below the 5000 ft transition
+altitude. Leeds Bradford itself isn't a destination yet.
 
 ## Using it
 
@@ -70,5 +87,8 @@ See `docs/deploy.md`.
 
 ## Sources
 - CAA SafetySense 22 Radiotelephony (July 2026), CAP 413
-- UK AIP AD 2 EGNM (Leeds Bradford) and EGPH (Edinburgh)
+- UK AIP AD 2 EGNM (Leeds Bradford) and EGPH (Edinburgh); ENR 2.1 for the Leeds CTAs (AIRAC 3 September 2026)
+- UK VRP dataset, NATS AIS digital datasets (AIRAC 3 September 2026; usage unrestricted). Since October 2025 VRPs
+  are published here rather than in each aerodrome's AD 2 entry: Keighley is no longer a Leeds VRP.
+- Landmark positions: GeoNames (CC BY 4.0), via the Open-Meteo geocoder
 - Carlisle Lake District Airport airfield information; Flexwing Scotland airfield cards

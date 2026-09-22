@@ -64,7 +64,7 @@ test('Wrong QNH gets a single-item correction', async () => {
       return ev => {
         if (!done && ev.kind === 'awaiting' && /Cleared to enter/.test(ev.atcText || '')) {
           done = true;
-          sendWhenClear(engine, 'cleared to enter the zone via Keighley VFR not above altitude 3000 feet QNH 1016 route Eccup wilco G-IA');
+          sendWhenClear(engine, 'cleared to enter the zone via Salts Mill VFR not above altitude 3000 feet QNH 1016 route Eccup wilco G-IA');
           return;
         }
         perfect(ev);
