@@ -3,14 +3,24 @@
 // Note: the browser's speech synthesiser can't be routed through Web Audio, so the voices
 // themselves aren't band-limited; the static and squelch around them do the work.
 
+// How loud the noise is: between transmissions, while someone is speaking, and the burst as the squelch closes.
+// The voice comes from the speech synthesiser, which can't be mixed into Web Audio, so on some devices (Android
+// especially) it is much quieter than the noise. Hence: barely any hiss under the voice, and the radio character
+// comes from the clicks and the squelch tail instead.
+const NOISE = {
+  off: { idle: 0, open: 0, tail: 0 },
+  low: { idle: 0.003, open: 0.006, tail: 0.03 },
+  normal: { idle: 0.006, open: 0.014, tail: 0.05 },
+};
+
 export class BrowserRadio {
-  constructor({ hiss = true, volume = 0.9 } = {}) {
+  constructor({ noise = 'low', volume = 1 } = {}) {
     this.busy = false;
     this.currentSpeaker = null;
     this.queue = Promise.resolve();
     this.voices = [];
     this.voiceMap = new Map();
-    this.hissOn = hiss;
+    this.noise = NOISE[noise] || NOISE.low;
     this.volume = volume;
     this.interrupted = false;
   }
@@ -19,14 +29,14 @@ export class BrowserRadio {
     this.ac = new (window.AudioContext || window.webkitAudioContext)();
     await this.ac.resume();
     const len = this.ac.sampleRate * 2;
-    this.noise = this.ac.createBuffer(1, len, this.ac.sampleRate);
-    const d = this.noise.getChannelData(0);
+    this.noiseBuffer = this.ac.createBuffer(1, len, this.ac.sampleRate);
+    const d = this.noiseBuffer.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.master = this.ac.createGain(); this.master.gain.value = this.volume; this.master.connect(this.ac.destination);
     // Continuous band-limited noise: the squelch opens it up during transmissions.
-    this.noiseSrc = this.ac.createBufferSource(); this.noiseSrc.buffer = this.noise; this.noiseSrc.loop = true;
+    this.noiseSrc = this.ac.createBufferSource(); this.noiseSrc.buffer = this.noiseBuffer; this.noiseSrc.loop = true;
     const bp = this.ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.7;
-    this.noiseGain = this.ac.createGain(); this.noiseGain.gain.value = this.hissOn ? 0.006 : 0;
+    this.noiseGain = this.ac.createGain(); this.noiseGain.gain.value = this.noise.idle;
     this.noiseSrc.connect(bp).connect(this.noiseGain).connect(this.master);
     this.noiseSrc.start();
     await this.loadVoices();
@@ -109,12 +119,12 @@ export class BrowserRadio {
     const now = this.ac.currentTime;
     this.noiseGain.gain.cancelScheduledValues(now);
     if (open) {
-      this.click(0.25);
-      this.noiseGain.gain.setTargetAtTime(0.05, now, 0.01);
+      this.click(0.22);
+      this.noiseGain.gain.setTargetAtTime(this.noise.open, now, 0.01);
     } else {
-      // squelch tail: a short burst, then back to background hiss
-      this.noiseGain.gain.setValueAtTime(0.12, now);
-      this.noiseGain.gain.setTargetAtTime(this.hissOn ? 0.006 : 0, now + 0.12, 0.02);
+      // squelch tail: a short burst, then back to the background
+      this.noiseGain.gain.setValueAtTime(this.noise.tail, now);
+      this.noiseGain.gain.setTargetAtTime(this.noise.idle, now + 0.12, 0.02);
     }
   }
 
@@ -141,19 +151,20 @@ export class BrowserRadio {
     const a = this.ac.createOscillator(), b = this.ac.createOscillator();
     a.frequency.value = 1020; b.frequency.value = 1090;
     a.connect(g); b.connect(g); g.connect(this.master); a.start(); b.start();
-    this.noiseGain.gain.setTargetAtTime(0.1, this.ac.currentTime, 0.01);
+    this.noiseGain.gain.setTargetAtTime(Math.max(this.noise.open, 0.01), this.ac.currentTime, 0.01);
     this.het = { a, b, g };
   }
 
   stopHeterodyne() {
     if (!this.het) return;
     this.het.a.stop(); this.het.b.stop(); this.het.g.disconnect(); this.het = null;
-    this.noiseGain.gain.setTargetAtTime(this.hissOn ? 0.006 : 0, this.ac.currentTime, 0.02);
+    this.noiseGain.gain.setTargetAtTime(this.noise.idle, this.ac.currentTime, 0.02);
   }
 
-  setHiss(on) {
-    this.hissOn = on;
-    if (this.ac && !this.busy) this.noiseGain.gain.setTargetAtTime(on ? 0.006 : 0, this.ac.currentTime, 0.05);
+  /** 'off' | 'low' | 'normal', changeable in flight. */
+  setNoise(level) {
+    this.noise = NOISE[level] || NOISE.low;
+    if (this.ac && !this.busy) this.noiseGain.gain.setTargetAtTime(this.noise.idle, this.ac.currentTime, 0.05);
   }
 
   stopAll() {

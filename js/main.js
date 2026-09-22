@@ -6,6 +6,7 @@ import { AREAS } from './areas/index.js';
 import { parseRoute, planRoute, routeText, mapPoints } from './route.js';
 import { MovingMap } from './map.js';
 import { customScenario } from './scenarios/custom.js';
+import { LISTEN_UNITS, listenScenario } from './scenarios/listen.js';
 import { PROFILES } from './config.js';
 import { BrowserRadio, realClock, voiceChoices, voiceForUnit } from './radio.js';
 import { PushToTalk } from './ptt.js';
@@ -25,17 +26,24 @@ const state = {
   scenarioId: store.get('scenarioId', SCENARIOS[0].id),
   showText: store.get('showText', false),
   routes: store.get('routes', { leeds: { text: 'Skipton to Wetherby via Salts Mill and Eccup Reservoir', alt: 2800 } }),
+  listenUnit: store.get('listenUnit', 'leeds'),
   engine: null, radio: null, ptt: null, lastEnd: null, built: null,
 };
 const DELAYS = { fast: [0.3, 1], normal: [0.4, 1.6], busy: [1, 3] };
 // "Your own route" cards, one per area: the scenario is built from the route when you ask for a briefing.
 const CUSTOM = AREAS.map(area => ({ id: `custom-${area.id}`, area, title: `${area.name}: your own route`,
   subtitle: 'Describe a route: ATC works out the clearance, the VRPs you report and where you leave.', unit: area.unit, freq: area.freq }));
-const CHOICES = [...SCENARIOS, ...CUSTOM];
+// Listening out: one card, with the frequency chosen below it.
+const listenCard = () => {
+  const u = LISTEN_UNITS.find(x => x.id === state.listenUnit) || LISTEN_UNITS[0];
+  return { id: 'listen', listen: true, title: 'Listen out', unit: u.unit, freq: u.freq,
+    subtitle: 'Sit on a frequency and listen to the traffic: no calls to make.' };
+};
+const choices = () => [...SCENARIOS, ...CUSTOM, listenCard()];
 
 function show(id) { for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== id; window.scrollTo(0, 0); }
 const profile = () => state.profiles.find(p => p.id === state.profileId) || state.profiles[0];
-const choice = () => CHOICES.find(s => s.id === state.scenarioId) || SCENARIOS[0];
+const choice = () => choices().find(s => s.id === state.scenarioId) || SCENARIOS[0];
 const scenario = () => state.built || choice();
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -62,14 +70,25 @@ function renderSetup() {
       store.set('profiles', state.profiles); renderSetup();
     });
   });
-  $('scenarios').innerHTML = CHOICES.map(s => `
+  $('scenarios').innerHTML = choices().map(s => `
     <button class="card" type="button" data-s="${s.id}" aria-pressed="${s.id === state.scenarioId}">
       <b>${esc(s.title)}</b><span>${esc(s.subtitle)}</span><span class="mono">${esc(s.unit)} · ${esc(s.freq)}</span>
     </button>`).join('');
   renderRoutePanel();
+  renderListenPanel();
   const h = store.get('history', []);
   $('history-block').hidden = !h.length;
   $('history').innerHTML = h.slice(0, 8).map(x => `<li>${esc(x.date)} · ${esc(x.title)} · ${esc(x.reg)}: ${x.stats.readbacksRightFirstTime}/${x.stats.readbacks} readbacks right first time, score ${x.stats.averageScore ?? '–'}</li>`).join('');
+}
+
+function renderListenPanel() {
+  const c = choice();
+  $('listen-panel').hidden = !c.listen;
+  if (!c.listen) return;
+  const here = LISTEN_UNITS.find(u => u.id === state.listenUnit) || LISTEN_UNITS[0];
+  $('listen-unit').innerHTML = LISTEN_UNITS.map(u =>
+    `<option value="${esc(u.id)}"${u.id === here.id ? ' selected' : ''}>${esc(u.unit)} · ${esc(u.freq)}</option>`).join('');
+  $('listen-about').textContent = here.about;
 }
 
 // ---------------- your own route ----------------
@@ -143,10 +162,14 @@ function bindRoute() {
 function bindSetup() {
   $('aircraft').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (!b) return; state.profileId = b.dataset.p; store.set('profileId', state.profileId); renderSetup(); });
   $('scenarios').addEventListener('click', e => { const b = e.target.closest('[data-s]'); if (!b) return; state.scenarioId = b.dataset.s; store.set('scenarioId', state.scenarioId); renderSetup(); });
-  const opts = { 'o-density': 'normal', 'o-scale': '1', 'o-delay': 'normal', 'o-refuse': '0', 'o-key': '' };
+  // the old on/off static switch becomes a level
+  if (store.get('o-noise', null) === null) store.set('o-noise', store.get('o-hiss', true) ? 'normal' : 'off');
+  const opts = { 'o-density': 'normal', 'o-scale': '1', 'o-delay': 'normal', 'o-refuse': '0', 'o-noise': 'low', 'o-key': '' };
   for (const [id, d] of Object.entries(opts)) { $(id).value = store.get(id, d); $(id).addEventListener('change', () => store.set(id, $(id).value)); }
-  const checks = { 'o-text': false, 'o-mine': true, 'o-hot': true, 'o-hiss': true };
+  const checks = { 'o-text': false, 'o-mine': true, 'o-hot': true };
   for (const [id, d] of Object.entries(checks)) { $(id).checked = store.get(id, d); $(id).addEventListener('change', () => store.set(id, $(id).checked)); }
+  $('o-noise').addEventListener('change', () => state.radio?.setNoise($('o-noise').value));   // takes effect in flight
+  $('listen-unit').addEventListener('change', () => { state.listenUnit = $('listen-unit').value; store.set('listenUnit', state.listenUnit); renderSetup(); });
   $('support-warning').hidden = PushToTalk.supported();
   $('to-brief').addEventListener('click', renderBrief);
   bindVoice();
@@ -163,7 +186,7 @@ function fillVoices() {
   if (!voices.length) return;
   const chosen = store.get('voice', '');
   $('o-voice').innerHTML = [`<option value="">A different voice for each unit</option>`,
-    ...voices.map(v => `<option value="${esc(v.name)}"${v.name === chosen ? ' selected' : ''}>${esc(v.name)} · ${esc(v.lang)}</option>`)].join('');
+    ...voices.map(v => `<option value="${esc(v.name)}"${v.name === chosen ? ' selected' : ''}>${esc(v.name)} · ${esc(v.lang)}${v.localService ? '' : ' · network'}</option>`)].join('');
 }
 
 function bindVoice() {
@@ -213,7 +236,8 @@ function engineCtxPreview() {
 function renderBrief() {
   const c = choice(), p = profile();
   let s = c;
-  if (c.area) {                                   // your own route: build it now, with fresh QNH, squawk and surprises
+  if (c.listen) s = listenScenario(state.listenUnit);
+  else if (c.area) {                              // your own route: build it now, with fresh QNH, squawk and surprises
     const route = checkRoute();
     if (!route) { show('setup'); $('route-panel').scrollIntoView({ block: 'center' }); toast('That route can’t be flown yet: see the notes under it.', 'warn'); return; }
     s = customScenario(c.area, route);
@@ -239,7 +263,7 @@ async function begin() {
   const s = scenario(), p = profile();
   $('begin').disabled = true;
   try {
-    state.radio = new BrowserRadio({ hiss: $('o-hiss').checked });
+    state.radio = new BrowserRadio({ noise: $('o-noise').value });
     await state.radio.init();
     state.radio.setAtcVoice(store.get('voice', ''));
     const key = $('o-key').value.trim();
@@ -251,6 +275,7 @@ async function begin() {
     const engine = new Engine({ scenario: s, profile: p, settings, radio: state.radio, clock: realClock, claude, onEvent: onEngineEvent });
     state.engine = engine;
     resetFlightUi(p);
+    $('flight').classList.toggle('listen', !!s.listen);
     if (s.plan) {
       state.map ||= new MovingMap($('map'), { onPick: showPick });
       state.map.reset();
@@ -258,7 +283,8 @@ async function begin() {
     }
     setView(s.plan ? store.get('flightView', 'map') : 'log');
     show('flight');
-    if (PushToTalk.supported()) {
+    if (s.listen) { /* nothing to say: the frequency does the talking */ }
+    else if (PushToTalk.supported()) {
       state.ptt = new PushToTalk({
         button: $('ptt'),
         onDown: () => { state.radio.keyClick(); engine.pilotKeyDown(); $('ptt').classList.add('keyed'); $('lamp-tx').classList.add('on'); if ($('o-mine').checked) { $('mine').hidden = false; $('mine').textContent = '…'; } },
@@ -288,6 +314,7 @@ function resetFlightUi(p) {
   $('log').innerHTML = ''; $('cue').textContent = ''; $('leg-label').textContent = '—'; $('leg-time').textContent = '--:--';
   $('leg-bar').style.width = '0'; $('mine').hidden = true; $('toast').hidden = true;
   $('navdata').hidden = true; $('nd-alt').textContent = '----'; $('nd-qnh').textContent = '----'; $('nd-next').textContent = '';
+  $('xpdr-pad').hidden = true; $('rh-xpdr').classList.remove('wanted', 'identing'); $('map-orbit').classList.remove('wanted');
   $('rh-reg').textContent = p.reg;
   $('rh-xpdr').classList.toggle('off', !p.transponder);
   $('rh-squawk').textContent = p.transponder ? '7000' : 'NONE';
@@ -309,7 +336,9 @@ function onEngineEvent(ev) {
     case 'leg':                                   // on your own route the nav events keep the time and the bar
       if (ev.nav) { $('leg-label').textContent = ev.label || ''; if (ev.cue) $('cue').textContent = ev.cue; } else startLeg(ev);
       break;
-    case 'nav': showNav(ev); state.map?.update(ev); $('map-orbit').setAttribute('aria-pressed', String(!!ev.pilotHold)); break;
+    case 'nav': showNav(ev); state.map?.update(ev); break;
+    case 'action': showAction(ev); break;
+    case 'ident': flashXpdr(); break;
     case 'route': state.map?.setRoute(ev); break;
     case 'cue': case 'position': $('cue').textContent = ev.text || ev.cue || ev.label || ''; break;
     case 'toast': if (ev.text && (!/without pressing PTT/.test(ev.text) || $('o-hot').checked)) toast(ev.text, ev.level); break;
@@ -353,9 +382,55 @@ function showNav(n) {
   clearInterval(legTimer);
   $('navdata').hidden = false;
   $('nd-alt').textContent = n.altitude;
-  $('nd-next').textContent = n.orbiting ? 'Orbiting' : n.next ? `Next ${n.next.name} ${n.next.nm.toFixed(1)} nm` : 'Route complete';
+  $('nd-next').textContent = n.orbiting ? n.hold : n.next ? `Next ${n.next.name} ${n.next.nm.toFixed(1)} nm` : 'Route complete';
+  const held = n.orbiting && !n.pilotHold;                    // ATC is holding you: the button can't change that
+  const orbit = $('map-orbit');
+  orbit.disabled = held;
+  orbit.textContent = held ? 'Held' : 'Orbit';
+  orbit.title = held ? n.hold : 'Orbit where you are';
+  orbit.setAttribute('aria-pressed', String(!!n.pilotHold));
   $('leg-time').textContent = n.next && !n.orbiting ? fmt(n.next.sec) : '--:--';
   $('leg-bar').style.width = `${Math.min(100, 100 * n.s / n.total)}%`;
+}
+
+// ---------------- things to do, not just say ----------------
+// ATC is waiting for you to set the code or start the orbit: point at the control that does it.
+function showAction(ev) {
+  const xpdr = $('rh-xpdr'), orbit = $('map-orbit');
+  if (!ev.pending) { xpdr.classList.remove('wanted'); orbit.classList.remove('wanted'); return; }
+  if (ev.action === 'orbit') {
+    orbit.classList.add('wanted');
+    if ($('map').hidden && !!scenario().plan) setView('map');
+  } else if (ev.action) {
+    xpdr.classList.add('wanted');
+  }
+}
+
+function flashXpdr() {
+  const x = $('rh-xpdr');
+  x.classList.add('identing');
+  setTimeout(() => x.classList.remove('identing'), 1200);
+}
+
+function bindXpdr() {
+  const pad = $('xpdr-pad'), entry = $('xpdr-entry');
+  let typed = '';
+  const show = () => { entry.textContent = (typed + '····').slice(0, 4); };
+  $('rh-xpdr').addEventListener('click', () => {
+    if (!profile().transponder || !state.engine?.running) return;
+    typed = ''; show(); pad.hidden = false;
+  });
+  pad.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.d) {
+      if (typed.length < 4) typed += b.dataset.d;
+      show();
+      if (typed.length === 4) { state.engine?.setSquawk(typed); toast(`Squawk ${typed} set.`, 'info'); setTimeout(() => { pad.hidden = true; }, 600); }
+    } else if (b.id === 'xpdr-back') { typed = typed.slice(0, -1); show(); }
+    else if (b.id === 'xpdr-ident') { state.engine?.ident(); toast('Ident.', 'info'); }
+    else if (b.id === 'xpdr-close') pad.hidden = true;
+  });
 }
 
 // ---------------- moving map ----------------
@@ -423,6 +498,7 @@ function bindFlight() {
   });
   $('f-end').addEventListener('click', () => state.engine?.stop());
   bindMap();
+  bindXpdr();
 }
 
 // ---------------- debrief ----------------
@@ -432,6 +508,13 @@ function onEnd({ events, ctx, summary }) {
   state.radio?.stopAll();
   wakeLock?.release?.(); wakeLock = null;
   const s = scenario();
+  if (s.listen) {                                 // nothing to debrief: just say how long you sat there
+    const mins = Math.round((events.at(-1)?.t || 0) / 60);
+    renderSetup();
+    show('setup');
+    toast(`Listened to ${s.unit} for ${mins} minute${mins === 1 ? '' : 's'}.`, 'info');
+    return;
+  }
   const d = computeDebrief(events);
   state.lastEnd = { events, ctx, summary, d };
   const h = store.get('history', []);
@@ -483,10 +566,11 @@ function renderTl(e) {
     blocked: 'Blocked: you transmitted over another station', 'hot-mic': 'Spoke without pressing PTT (not transmitted)', 'stepped-in': 'Called in the middle of another exchange',
     'wrong-callsign': `Answered a call for ${e.forCall}`, note: e.text, offscript: `Left the script: “${e.text}”. Claude took over.`,
     'free-assessment': `You: “${e.text}”${e.assessment ? ` · ${e.assessment}` : ''}`, 'say-again': 'You asked for a repeat', answer: `Asked for ${e.asked}: “${e.text}”`,
-    'route-change': `Changed route: ${e.text}`, orbit: e.text,
+    'route-change': `Changed route: ${e.text}`, orbit: e.text, 'squawk-set': e.text, ident: 'Ident',
+    action: `Did it: ${e.text}`, 'late-action': 'ATC had to chase you for it', 'no-action': `Never done: ${e.text}`,
     unexpected: `Unexpected call: “${e.text}”`, position: e.label, cue: e.text, atc: `ATC: ${e.text}`,
   };
-  const neutral = ['note', 'position', 'cue', 'atc', 'say-again', 'answer', 'free-assessment', 'route-change', 'orbit'].includes(e.type);
+  const neutral = ['note', 'position', 'cue', 'atc', 'say-again', 'answer', 'free-assessment', 'route-change', 'orbit', 'squawk-set', 'ident', 'action'].includes(e.type);
   return `<li class="tl event${neutral ? '' : ' bad'}">${t}<div class="${e.type === 'atc' ? 'atc' : ''}">${esc(labels[e.type] || e.type)}</div></li>`;
 }
 

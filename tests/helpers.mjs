@@ -24,9 +24,19 @@ export function seeded(seed) {
   let a = seed >>> 0;
   return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 }
+/** The flawless pilot also does as they are told: sets the code, presses ident, starts and stops the orbit. */
+function doAsTold(engine, ev) {
+  setTimeout(() => {
+    if (ev.action === 'squawk' || ev.action === 'squawk-ident') engine.setSquawk(ev.value);
+    if (ev.action === 'squawk-ident') engine.ident();
+    if (ev.action === 'orbit') engine.setOrbit(ev.value);
+  }, 1);
+}
+
 /** A pilot who answers every expectation with the first acceptable phrase of every item. */
 export function perfectPilot(engine, { override = {} } = {}) {
   return (ev) => {
+    if (ev.kind === 'action') { if (ev.pending) doAsTold(engine, ev); return; }
     if (ev.kind !== 'awaiting') return;
     const ab = engine.ctx.abbr, reg = engine.ctx.reg;
     const words = (ev.spec || []).map(i => i.any[0]).filter(Boolean);

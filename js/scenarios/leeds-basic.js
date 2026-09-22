@@ -1,4 +1,4 @@
-import { P, WILCO, SQUAWK, BASIC, ROS, TRAFFIC_ACK, details, initialCall, leedsTraffic } from './common.js';
+import { P, WILCO, SQUAWK, BASIC, ROS, TRAFFIC_ACK, details, initialCall, leedsTraffic, useSquawk } from './common.js';
 import { areaById } from '../areas/index.js';
 
 export default {
@@ -25,7 +25,7 @@ export default {
       detailsModel: '{CS}, {TYPE}, local flight to Burnley, 2 miles north of Skipton, altitude 2500 feet, QNH 1016, VFR, ' + (ctx.transponder ? '' : 'no transponder, ') + 'routing west of your zone' });
     if (ctx.transponder) {
       await s.atc('{CALL}, Basic Service, squawk 5621', { readback: [BASIC(), SQUAWK('5621')], model: 'Basic Service, squawk 5621, {CALL}' });
-      s.setRadio({ squawk: '5621' });
+      await useSquawk(s, '5621');
     } else {
       await s.atc('{CALL}, Basic Service, report passing Oxenhope', { readback: [BASIC(), WILCO()], model: 'Basic Service, wilco, {CALL}' });
     }
@@ -59,7 +59,7 @@ export default {
     await s.atc(ctx.transponder ? '{CALL}, squawk 7000, frequency change approved' : '{CALL}, frequency change approved', {
       readback: [...(ctx.transponder ? [SQUAWK('7000')] : []), P('frequency change approved', ['frequency change', 'changing'], { soft: true })],
       model: (ctx.transponder ? 'Squawk 7000, ' : '') + 'frequency change approved, {CALL}' });
-    s.setRadio({ squawk: ctx.transponder ? '7000' : null });
+    await useSquawk(s, '7000', { chase: false });
     s.end('Basic Service leg completed');
   },
 };

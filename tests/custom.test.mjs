@@ -73,14 +73,15 @@ test('the aircraft holds outside controlled airspace until it is cleared in', as
   for (const seed of [1, 2, 3, 4]) {
     const scenario = scenarioFor(ROUTES[0], seed);
     const sIn = scenario.plan.transit.sIn;
-    let cleared = false, deepest = 0, orbited = false;
+    let cleared = false, deepest = 0, orbited = false, heldReason = null;
     const events = await fly(scenario, PROFILES[0], seed, { settings: { refusalBias: -1 },
       watch: e => {
         if (e.kind === 'radio' && /Cleared to enter/.test(e.text)) cleared = true;
-        if (e.kind === 'nav' && !cleared) { deepest = Math.max(deepest, e.s); orbited ||= e.orbiting; }
+        if (e.kind === 'nav' && !cleared) { deepest = Math.max(deepest, e.s); orbited ||= e.orbiting; if (e.orbiting) heldReason = e.hold; }
       } });
     assertClean(events, `seed ${seed}`);
     assert.ok(cleared, 'a clearance was given');
+    if (orbited) assert.match(heldReason || '', /clearance/i, 'a hold says why it is holding');
     assert.ok(deepest <= sIn - 0.99, `reached ${deepest.toFixed(2)} nm before the clearance; the boundary is at ${sIn.toFixed(2)}`);
   }
 });
@@ -216,17 +217,43 @@ test('before your first call, a new route simply replaces the plan', async () =>
 });
 
 test('orbit holds the aircraft where it is until you carry on', async () => {
-  let orbitAt = null, navs = 0, drift = 0;
+  let orbitAt = null, navs = 0, drift = 0, said = null;
   const events = await fly(scenarioFor(ROUTES[5], 4), PROFILES[1], 4, { settings: { trafficDensity: 'quiet' },
     watch: (e, engine) => {
       if (e.kind !== 'nav') return;
       if (orbitAt == null && e.s > 3) { engine.setOrbit(true); orbitAt = engine.nav.s; return; }
       if (orbitAt != null && navs < 20) {
         navs++; drift = Math.max(drift, Math.abs(e.s - orbitAt));
+        if (e.pilotHold) said = e.hold;
         if (navs === 20) engine.setOrbit(false);
       }
     } });
   assertClean(events, 'G-CZIA');
   assert.equal(navs, 20);
+  assert.equal(said, 'Orbiting', 'your own orbit says so');
   assert.ok(drift < 1e-9, `moved ${drift} nm while orbiting`);
+});
+
+test('a hold by ATC says why, and is not the pilot\'s to release', async () => {
+  let held = null, pilotHeld = false;
+  await fly(scenarioFor(ROUTES[1], 7), PROFILES[0], 7, { settings: { refusalBias: 1, trafficDensity: 'quiet' },
+    watch: e => { if (e.kind === 'nav' && e.orbiting) { held = held || e.hold; pilotHeld = pilotHeld || e.pilotHold; } } });
+  assert.match(held || '', /holding|orbiting/i, 'the map says why ATC is holding you');
+  assert.equal(pilotHeld, false, 'it is ATC holding you, not the orbit button');
+});
+
+test('an orbit has to be flown, not just read back', async () => {
+  let found = false;
+  for (let seed = 1; seed <= 40 && !found; seed++) {
+    const events = await fly(scenarioFor(ROUTES[0], seed), PROFILES[1], seed, { settings: { refusalBias: -1, trafficDensity: 'quiet' },
+      pilot: engine => {
+        const perfect = perfectPilot(engine);
+        return ev => { if (ev.kind === 'action' && ev.action === 'orbit') return; perfect(ev); };   // reads it back, never turns
+      } });
+    if (!atcSaid(events).some(t => /orbit left at present position/.test(t))) continue;
+    found = true;
+    assert.ok(atcSaid(events).some(t => /confirm orbiting left/.test(t)), 'ATC chased the orbit');
+    assert.ok(events.some(e => e.type === 'no-action' && /orbit/.test(e.id)), JSON.stringify(events.filter(e => e.type === 'no-action')));
+  }
+  assert.ok(found, 'an orbit came up within 40 seeds');
 });

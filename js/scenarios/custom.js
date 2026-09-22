@@ -4,7 +4,7 @@
 // Change the route in flight (the map's Direct to / Divert) and the controller picks up from wherever the flight
 // has got to: tell them, and they re-clear you or carry on with a Basic Service. Cleared inside controlled
 // airspace, you ask first and the aircraft keeps to the clearance until they approve.
-import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, TRAFFIC_ACK, details, initialCall } from './common.js';
+import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, TRAFFIC_ACK, details, initialCall, useSquawk } from './common.js';
 import { planRoute, reroutePoints, presentPosition, routeText, whereIs } from '../route.js';
 import { miles } from '../geo.js';
 
@@ -81,13 +81,15 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     await s.atc('{CALL}, orbit left at present position, due inbound traffic', {
       readback: [P('orbit left', ['orbit left'], { fix: 'orbit left at present position' }), P('present position', ['present position'], { soft: true })],
       model: 'Orbit left at present position, {CALL}' });
-    s.hold(s.position().s);
-    await s.leg('Orbiting', s.ctx.speedKt * 2 / 60, { cue: 'Orbit left and keep listening.' });
+    const orbiting = await s.action({ id: 'orbit', action: 'orbit', value: true, cue: 'Orbit left: press Orbit on the map.',
+      done: () => s.orbiting(), nudge: '{CALL}, confirm orbiting left', timeout: 15 });
+    await s.leg('Orbiting', s.ctx.speedKt * 2 / 60, { cue: orbiting ? 'Orbit left and keep listening.' : 'ATC believes you are orbiting.' });
     const to = nextReport();
-    s.hold(null);
     await s.atc(`{CALL}, resume own navigation${to ? ` to ${to.name}` : ''}`, {
       readback: [P('resume own navigation', ['resume own navigation', 'resume'], { fix: 'resume own navigation' }), ...(to ? [named(to, `resume own navigation to ${to.name}`)] : [])],
       model: `Resume own navigation${to ? ` to ${to.name}` : ''}, {CALL}` });
+    await s.action({ id: 'orbit-resume', action: 'orbit', value: false, cue: 'Stop orbiting: press Orbit again.',
+      done: () => !s.orbiting(), nudge: '{CALL}, confirm resuming own navigation', timeout: 15 });
   };
   const traffic = async s => {
     const alt = Math.max(1000, altitude + s.pick([-500, -300, 300, 500, 0]));
@@ -108,7 +110,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     await s.atc(`{CALL}, ${words}`, {
       readback: [...(basic ? [BASIC()] : []), ...(x ? [SQUAWK('7000')] : []), P('frequency change approved', ['frequency change', 'free call', 'freecall', 'changing'], { soft: !basic, fix: 'frequency change approved' })],
       model: `${cap(words)}, {CALL}` });
-    s.setRadio({ squawk: x ? '7000' : null });
+    await useSquawk(s, '7000', { chase: false });
     s.end(summary);
   }
 
@@ -120,7 +122,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     await s.atc(x ? '{CALL}, squawk 7000, frequency change approved' : '{CALL}, frequency change approved', {
       readback: [...(x ? [SQUAWK('7000')] : []), P('frequency change approved', ['frequency change', 'changing'], { soft: true })],
       model: (x ? 'Squawk 7000, ' : '') + 'frequency change approved, {CALL}' });
-    s.setRadio({ squawk: x ? '7000' : null });
+    await useSquawk(s, '7000', { chase: false });
     s.end(summary);
   }
 
@@ -147,12 +149,12 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
   // Basic Service, and a squawk (or, without a transponder, something to report).
   async function service(s, P0, { noXpdrSaid = false } = {}) {
     const { ctx } = s, T = P0.transit;
-    if (T) s.hold(Math.max(s.position().s, T.sIn - 1));             // not into controlled airspace without a clearance
+    if (T) s.hold(Math.max(s.position().s, T.sIn - 1), 'Holding for your clearance');   // not in without one
     const outside = T ? ', remain outside controlled airspace' : '';
     if (ctx.transponder) {
       await s.atc(`{CALL}, Basic Service, squawk ${squawk}${outside}`, {
         readback: [BASIC(), SQUAWK(squawk), ...(T ? [ROS()] : [])], model: `Basic Service, squawk ${squawk}${outside}, {CALL}` });
-      s.setRadio({ squawk });
+      await useSquawk(s, squawk);
     } else if (T) {
       if (!noXpdrSaid) {
         await s.atc('{CALL}, confirm you are not transponder equipped', { reply: { id: 'xpdr', timeout: 12,
@@ -174,7 +176,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
   // Heading for controlled airspace, not cleared yet: report approaching, perhaps wait or be refused, then the clearance.
   async function approach(s, P0) {
     const { ctx } = s, T = P0.transit, A = st.approaching;
-    s.hold(Math.max(s.position().s, T.sIn - 1));
+    s.hold(Math.max(s.position().s, T.sIn - 1), 'Holding for your clearance');
     await s.reach(Math.max(s.position().s + 0.3, T.sIn - 2.5), { label: A ? `Towards ${A.name}` : 'Towards controlled airspace' });
     if (!ctx.transponder && A) {
       st.approaching = null;
@@ -270,7 +272,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
       model: 'Affirm, will not enter controlled airspace, routing round the zone, {CALL}' });
     st.refused = true;
     await s.atc('{CALL}, roger, Basic Service continues, report changing frequency', { readback: [BASIC(), WILCO()], model: 'Basic Service, wilco, {CALL}' });
-    s.hold(s.position().s);
+    s.hold(s.position().s, 'Holding outside controlled airspace');
     await s.leg('Routing round the zone', 5, { cue: 'Plan B: pick a way round on the map (tap a place, then Direct to or Divert), remaining outside controlled airspace.' });
     await leaveFrequency(s, 'Transit refused: routed round');
   }
@@ -347,7 +349,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
 
     plan = change.plan;                                                     // outside controlled airspace you've already turned
     const T = plan.transit;
-    if (T && !st.cleared) s.hold(Math.max(s.position().s, T.sIn - 1));
+    if (T && !st.cleared) s.hold(Math.max(s.position().s, T.sIn - 1), 'Holding for your clearance');
     await s.expect({ id: 'reroute', cue: `Tell ${area.unit} about your change of plan.`, nudge: '{CALL}, say intentions',
       items: [named(target, null, { ask: '{CALL}, say your routing' })],
       model: T ? `{CALL}, change of plan, request zone transit, route direct ${target.name}`

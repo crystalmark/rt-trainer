@@ -22,6 +22,23 @@ export const TRAFFIC_ACK = () => P('traffic acknowledged', ['traffic in sight', 
   why: 'Answer traffic information with “looking”, “traffic in sight” or “negative contact”.',
 });
 
+/**
+ * ATC has given you a squawk. Reading it back isn't enough: wait for it to appear on the transponder, chase it if
+ * it doesn't, and in the end ask for it again with an ident, as a real controller would.
+ */
+export async function useSquawk(s, code, { chase = true } = {}) {
+  if (!s.ctx.transponder) return true;
+  const set = () => s.squawk() === String(code);
+  const ok = await s.action({ id: `squawk-${code}`, action: 'squawk', value: String(code), cue: `Set squawk ${code} on the transponder.`,
+    done: set, nudge: `{CALL}, confirm squawk ${code}`, timeout: chase ? 20 : 12, tries: chase ? 1 : 0 });
+  if (ok || !chase) return ok;
+  await s.atc(`{CALL}, reset squawk ${code} and ident`, {
+    readback: [SQUAWK(code), P('ident', ['ident'], { soft: true, why: 'Read back the ident too, then press it.' })],
+    model: `Squawk ${code} and ident, {CALL}` });
+  return s.action({ id: `squawk-${code}-ident`, action: 'squawk-ident', value: String(code), cue: `Set squawk ${code}, then press IDENT.`,
+    done: () => set() && s.identedWithin(60), nudge: `{CALL}, negative ident, reset squawk ${code} and ident`, timeout: 25, tries: 1 });
+}
+
 /** Items for the "pass your message" details call. */
 export function details(ctx, { from, to, position, altitude, request, emailed = false }) {
   const items = [

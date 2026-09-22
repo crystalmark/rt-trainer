@@ -18,13 +18,21 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
 - `js/scenarios/*.js`: each scenario is `{ id, title, unit, freq, briefing(ctx), traffic(s), warn?, run(s) }`.
   `run` is an async script using the scenario API: `s.atc(text, { readback, model, clearance, reply })`,
   `s.expect({ id, cue, items, nudge, optional, initial, model })`, `s.leg(label, nm, { cue })`,
-  `s.chance(p)`, `s.setRadio({ squawk })`, `s.note(text)`, `s.end(summary)`.
+  `s.chance(p)`, `s.setRadio({ qnh })`, `s.note(text)`, `s.end(summary)`.
+  Instructions that need doing, not just saying, use `s.action({ id, action, value, cue, done, nudge, timeout })`:
+  it waits for `done()`, chases with `nudge`, and logs `action` / `late-action` / `no-action` for the debrief.
+  The pilot's own state lives in the engine: `s.squawk()`, `s.identedWithin(sec)`, `s.orbiting()`, set from the UI
+  by `engine.setSquawk(code)`, `engine.ident()`, `engine.setOrbit(on)`. `useSquawk(s, code)` in common.js is the
+  standard "set the code ATC gave you" step, ending in "reset squawk … and ident" if it never appears.
+  `js/scenarios/listen.js` is the listen-out session: no expectations, the traffic loop does the talking.
   Templates: `{CS}` full callsign, `{AB}` abbreviated, `{CALL}` whichever ATC is currently using,
   `{TYPE}`, `{UNIT}`, `{SIM}` a confusable callsign. Build items with `P()` and helpers in `common.js`.
   Always branch on `ctx.transponder` where handling differs.
 - `js/radio.js` (speech synthesis + Web Audio squelch/static/heterodyne). Voices are ranked by `voiceChoices()`
   (British first, Google/enhanced/premium preferred) and macOS novelty voices are excluded, or ATC ends up sounding
-  like Zarvox. Each unit gets its own controller voice (`voiceForUnit`, fixed by unit name, changed by `setUnit` when
+  like Zarvox. Radio noise has three levels and must stay well under the voice: the speech synthesiser can't be
+  routed through Web Audio, so on Android the voice is much quieter than anything Web Audio plays.
+  Each unit gets its own controller voice (`voiceForUnit`, fixed by unit name, changed by `setUnit` when
   the frequency changes); the pilot can pin one voice for every controller in the setup screen. Transmissions are spoken a clause at a time: Chrome cuts an
   utterance off after about 15 s. `js/ptt.js`
   (hold-to-talk, Web Speech API, hot-mic detector), `js/claude.js` (browser calls to the
@@ -65,6 +73,8 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   (nats-uk.ead-it.com → Publications → Digital datasets → VRP).
 
 ## Ideas / backlog
+- More things to do rather than say: set the altitude you were cleared to, turn onto a heading.
+- Listen out covers the four scripted units; add each new area's unit as it arrives.
 - More areas for your own route: Manchester (EGCC VRPs are already in `js/data/vrps.js`; the Low Level Route),
   Edinburgh (EGPH), York (Leeds East EGCM VRPs; Humberside, Linton/Leeming).
 - Change altitude in flight, and have ATC react if you climb into a CTA without a clearance.

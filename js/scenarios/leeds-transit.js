@@ -1,4 +1,4 @@
-import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, TRAFFIC_ACK, details, initialCall, leedsTraffic } from './common.js';
+import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, TRAFFIC_ACK, details, initialCall, leedsTraffic, useSquawk } from './common.js';
 import { areaById } from '../areas/index.js';
 
 const SALTS_MILL = ['salts mill', 'salt mill', 'saltaire'];
@@ -32,7 +32,7 @@ export default {
     if (ctx.transponder) {
       await s.atc('{CALL}, Basic Service, squawk 5634, remain outside controlled airspace', {
         readback: [BASIC(), SQUAWK('5634'), ROS()], model: 'Basic Service, squawk 5634, remain outside controlled airspace, {CALL}' });
-      s.setRadio({ squawk: '5634' });
+      await useSquawk(s, '5634');
       await s.leg('Inbound to Keighley', 3);
     } else {
       if (!saidNoXpdr) {
@@ -106,7 +106,7 @@ export default {
     await s.atc(ctx.transponder ? '{CALL}, Basic Service, squawk 7000, frequency change approved' : '{CALL}, Basic Service, frequency change approved', {
       readback: [BASIC(), ...(ctx.transponder ? [SQUAWK('7000')] : []), P('frequency change approved', ['frequency change', 'free call', 'freecall'], { fix: 'frequency change approved' })],
       model: (ctx.transponder ? 'Basic Service, squawk 7000' : 'Basic Service') + ', frequency change approved, {CALL}' });
-    s.setRadio({ squawk: ctx.transponder ? '7000' : null });
+    await useSquawk(s, '7000', { chase: false });
     s.end('Transit completed');
   },
 };

@@ -1,4 +1,4 @@
-import { P, WILCO, QNH, SQUAWK, NOT_ABOVE, ROS, TRAFFIC_ACK, FREQ, details, initialCall, edinburghTraffic } from './common.js';
+import { P, WILCO, QNH, SQUAWK, NOT_ABOVE, ROS, TRAFFIC_ACK, FREQ, details, initialCall, edinburghTraffic, useSquawk } from './common.js';
 
 export default {
   id: 'edinburgh-transit',
@@ -25,7 +25,7 @@ export default {
 
     if (ctx.transponder) {
       await s.atc('{CALL}, squawk 6155, remain outside controlled airspace', { readback: [SQUAWK('6155'), ROS()], model: 'Squawk 6155, remain outside controlled airspace, {CALL}' });
-      s.setRadio({ squawk: '6155' });
+      await useSquawk(s, '6155');
     } else {
       await s.atc('{CALL}, remain outside controlled airspace, report approaching Musselburgh', { readback: [ROS(), WILCO()], model: 'Remain outside controlled airspace, wilco, {CALL}' });
     }
@@ -71,7 +71,7 @@ export default {
     await s.atc((ctx.transponder ? '{CALL}, squawk 7000, ' : '{CALL}, ') + 'freecall Scottish Information 119.875', {
       readback: [...(ctx.transponder ? [SQUAWK('7000')] : []), FREQ('119.875', 'Scottish Information')],
       model: (ctx.transponder ? 'Squawk 7000, ' : '') + 'Scottish Information 119.875, {CALL}' });
-    s.setRadio({ squawk: ctx.transponder ? '7000' : null });
+    await useSquawk(s, '7000', { chase: false });
     s.end('Transit completed');
   },
 };

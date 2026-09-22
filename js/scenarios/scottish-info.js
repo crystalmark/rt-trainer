@@ -1,4 +1,4 @@
-import { P, WILCO, SQUAWK, BASIC, QNH, TRAFFIC_ACK, details, initialCall, scottishTraffic } from './common.js';
+import { P, WILCO, SQUAWK, BASIC, QNH, TRAFFIC_ACK, details, initialCall, scottishTraffic, useSquawk } from './common.js';
 
 export default {
   id: 'scottish-info',
@@ -23,7 +23,7 @@ export default {
     await s.atc((ctx.transponder ? '{CALL}, Basic Service, squawk 7401, ' : '{CALL}, Basic Service, ') + 'Scottish regional pressure 1011', {
       readback: [BASIC(), ...(ctx.transponder ? [SQUAWK('7401')] : []), QNH(1011, 'regional pressure')],
       model: (ctx.transponder ? 'Basic Service, squawk 7401, ' : 'Basic Service, ') + '1011, {CALL}' });
-    if (ctx.transponder) s.setRadio({ squawk: '7401' });
+    if (ctx.transponder) await useSquawk(s, '7401');
     await s.leg('North towards Langholm', 18, { cue: 'Long leg. Keep listening.' });
     if (s.chance(0.7)) {
       await s.atc('{CALL}, Scottish Information, Danger Area 510 Spadeadam is active up to flight level 100', {

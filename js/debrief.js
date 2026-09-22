@@ -34,6 +34,12 @@ export function computeDebrief(events) {
   if (stats.steppedIn) add(5, `Called in the middle of someone else’s exchange ${stats.steppedIn}×`, 'Wait for the controller to finish with the other aircraft (their readback and any reply) before calling.');
   if (stats.wrongCallsign) add(6, 'Answered a call meant for a similar callsign', 'Listen to the whole callsign; ask “confirm that was for G-…?” if unsure.');
   if (stats.lateReports) add(6, `${stats.lateReports} position report${stats.lateReports > 1 ? 's' : ''} late or missed`, 'Make reports at the point you were asked to, without being chased.');
+  // Reading an instruction back isn't flying it: the transponder and the orbit have to happen too.
+  const undone = events.filter(e => e.type === 'no-action');
+  if (undone.length) add(9, `Read back ${undone.length > 1 ? 'instructions' : 'an instruction'} but didn’t carry ${undone.length > 1 ? 'them' : 'it'} out`,
+    `${undone.map(e => e.text).join(' ')} ATC works on what you do, not what you say.`);
+  const chased = events.filter(e => e.type === 'late-action');
+  if (chased.length && !undone.length) add(5, `Chased ${chased.length}× for something you had read back`, 'Set the code or start the turn as you read it back, not a minute later.');
   const soft = {};
   for (const e of txs) for (const s of e.result?.softMissing || []) if (s.why) soft[s.label] = s.why;
   const softList = Object.entries(soft);
@@ -50,7 +56,7 @@ export function computeDebrief(events) {
   const readbackAtc = new Set(events.filter(e => e.type === 'readback').map(e => e.atcText));
   const timeline = events.filter(e => !(e.type === 'atc' && readbackAtc.has(e.text))).filter(e => ['atc', 'readback', 'call', 'correction', 'missed', 'late', 'no-call', 'blocked', 'hot-mic',
     'stepped-in', 'wrong-callsign', 'note', 'offscript', 'free-assessment', 'say-again', 'answer', 'unexpected', 'position', 'cue',
-    'route-change', 'orbit'].includes(e.type) && !(e.type === 'atc' && !e.toPilot));
+    'route-change', 'orbit', 'squawk-set', 'ident', 'action', 'late-action', 'no-action'].includes(e.type) && !(e.type === 'atc' && !e.toPilot));
   return { stats, issues, timeline };
 }
 

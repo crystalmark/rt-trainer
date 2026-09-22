@@ -47,6 +47,13 @@
         <div id="route-places" class="chips"></div>
       </details>
     </div>
+    <div id="listen-panel" class="route" hidden>
+      <div class="opts">
+        <label for="listen-unit" class="wide">Frequency to listen to
+          <select id="listen-unit"></select></label>
+      </div>
+      <p class="hint" id="listen-about"></p>
+    </div>
   </section>
 
   <section class="block">
@@ -63,7 +70,8 @@
       <label class="check" for="o-text"><input type="checkbox" id="o-text"> Show text of transmissions</label>
       <label class="check" for="o-mine"><input type="checkbox" id="o-mine" checked> Show what I said (speech recognition)</label>
       <label class="check" for="o-hot"><input type="checkbox" id="o-hot" checked> Warn when I talk without PTT</label>
-      <label class="check" for="o-hiss"><input type="checkbox" id="o-hiss" checked> Background static</label>
+      <label for="o-noise">Radio noise
+        <select id="o-noise"><option value="off">Off</option><option value="low" selected>Quiet</option><option value="normal">Normal</option></select></label>
     </div>
   </section>
 
@@ -145,7 +153,20 @@
     <div class="lcd"><span class="lcd-label">COM</span><span id="rh-freq">000.000</span></div>
     <div class="rh-row small">
       <span id="rh-reg" class="mono"></span>
-      <span class="xpdr" id="rh-xpdr"><span class="lcd-label">XPDR</span><span id="rh-squawk">----</span></span>
+      <button class="xpdr" id="rh-xpdr" type="button" aria-haspopup="dialog" aria-label="Transponder"><span class="lcd-label">XPDR</span><span id="rh-squawk">----</span></button>
+    </div>
+  </div>
+
+  <div id="xpdr-pad" class="xpdr-pad" role="dialog" aria-label="Transponder" hidden>
+    <div class="xpdr-entry mono" id="xpdr-entry">····</div>
+    <div class="xpdr-keys">
+      <button type="button" data-d="0">0</button><button type="button" data-d="1">1</button>
+      <button type="button" data-d="2">2</button><button type="button" data-d="3">3</button>
+      <button type="button" data-d="4">4</button><button type="button" data-d="5">5</button>
+      <button type="button" data-d="6">6</button><button type="button" data-d="7">7</button>
+      <button type="button" id="xpdr-back" aria-label="Delete">⌫</button>
+      <button type="button" id="xpdr-ident">IDENT</button>
+      <button type="button" id="xpdr-close" aria-label="Close">✕</button>
     </div>
   </div>
 

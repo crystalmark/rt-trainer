@@ -62,6 +62,8 @@ export class Engine {
     this.freeHistory = [];
     this.t0 = 0;
     this.abortReason = null;
+    this.squawk = this.ctx.transponder ? '7000' : null;   // what the pilot has actually set, not what ATC asked for
+    this.lastIdent = 0;
   }
 
   // ---------- helpers ----------
@@ -182,6 +184,50 @@ export class Engine {
     this.unsolicited(tx);
   }
 
+  // ---------- things the pilot does rather than says (the transponder, the orbit) ----------
+  /** The pilot set a code on the transponder. */
+  setSquawk(code) {
+    if (!this.ctx.transponder || !/^[0-7]{4}$/.test(String(code)) || code === this.squawk) return;
+    this.squawk = String(code);
+    this.log('squawk-set', { text: `Squawk ${this.squawk}` });
+    this.emit('radioState', { state: Object.assign(this.radioState ||= {}, { squawk: this.squawk }) });
+  }
+
+  /** The pilot pressed IDENT. */
+  ident() {
+    if (!this.ctx.transponder) return;
+    this.lastIdent = this.now();
+    this.log('ident', { text: 'Ident' });
+    this.emit('ident', {});
+  }
+
+  /**
+   * Wait for the pilot to do something, chasing them as a controller would: `done()` says whether they have.
+   * `action` and `value` tell the app (and the test pilot) what is wanted, so it can point at the right control.
+   */
+  async action({ id, action = null, value = null, cue, done, nudge, timeout = 15, tries = 2 }) {
+    if (done()) return true;
+    this.emit('action', { id, action, value, cue, pending: true });
+    if (cue) { this.emit('cue', { text: cue }); this.log('cue', { text: cue }); }
+    try {
+      for (let i = 0; ; i++) {
+        const deadline = this.now() + timeout * 1000;
+        while (this.now() < deadline) {
+          if (done()) { this.log('action', { id, text: cue || id }); return true; }
+          await this.sleep(this.clock.tick || 250);
+        }
+        if (done()) { this.log('action', { id, text: cue || id }); return true; }
+        if (i >= tries) break;
+        this.log('late-action', { id });
+        if (nudge) await this.atc(nudge);
+      }
+      this.log('no-action', { id, text: cue || id });
+      return false;
+    } finally {
+      this.emit('action', { id, pending: false });
+    }
+  }
+
   hotMic() {
     this.log('hot-mic', {});
     this.emit('toast', { level: 'warn', text: 'Not transmitted: you spoke without pressing PTT.' });
@@ -241,9 +287,17 @@ export class Engine {
       expect: o => e.expect(o),
       leg: (label, nm, o) => e.leg(label, nm, o),
       at: (label, cue) => { e.emit('position', { label, cue }); e.log('position', { label }); },
+      action: o => e.action(o),
+      squawk: () => e.squawk,
+      identedWithin: sec => !!e.lastIdent && (e.now() - e.lastIdent) <= sec * 1000,
+      orbiting: () => !!(e.nav && e.nav.pilotHold),
       fly: plan => e.fly(plan),
       reach: (s, o) => e.reach(s, o),
-      hold: s => { if (e.nav) e.nav.limit = s == null ? Infinity : Math.max(0, s); },
+      hold: (s, why) => {
+        if (!e.nav) return;
+        e.nav.limit = s == null ? Infinity : Math.max(0, s);
+        e.nav.holdWhy = s == null ? null : (why || 'held by ATC');
+      },
       position: () => e.nav ? { ...e.nav.plan.posAt(e.nav.s), s: e.nav.s } : null,
       dropPending: () => { if (e.nav && e.nav.pending) { e.nav.pending = null; e.emitRoute(); } },
       said: id => e.events.some(ev => (ev.type === 'call' || ev.type === 'readback') && ev.id === id),
@@ -300,7 +354,8 @@ export class Engine {
     const next = n.plan.points.find(w => w.s > n.s + 0.05);
     const left = next ? next.s - n.s : 0;
     return { s: n.s, total: n.plan.total, lat: p.lat, lon: p.lon, x: p.x, y: p.y, track: p.track, orbiting: n.orbiting,
-      pilotHold: n.pilotHold, pending: !!n.pending, speedKt: this.ctx.speedKt, rate: this.paused ? 0 : this.navRate(),
+      pilotHold: n.pilotHold, hold: n.pilotHold ? 'Orbiting' : n.orbiting ? (n.holdWhy || 'Holding') : null,
+      pending: !!n.pending, speedKt: this.ctx.speedKt, rate: this.paused ? 0 : this.navRate(),
       altitude: n.plan.altitude, next: next ? { name: next.place.name, nm: left, sec: left / this.ctx.speedKt * 3600 } : null };
   }
 
@@ -447,7 +502,7 @@ export class Engine {
     this.running = true;
     this.t0 = this.now();
     this.log('start', { scenario: this.scenario.id, reg: this.ctx.reg, transponder: this.ctx.transponder });
-    this.emit('radioState', { state: (this.radioState = { unit: this.ctx.unit, freq: this.ctx.freq, squawk: this.ctx.transponder ? '7000' : null }) });
+    this.emit('radioState', { state: (this.radioState = { unit: this.ctx.unit, freq: this.ctx.freq, squawk: this.squawk }) });
     this.trafficLoop();
     let part = api => this.scenario.run(api);
     for (;;) {

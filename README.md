@@ -18,6 +18,7 @@ Built for G-CLHP (flexwing, no transponder) and G-CZIA (QuikR, Mode S/C); both e
 | Carlisle departure | Carlisle Radio 123.605 | Radio check, taxi and line-up announcements, leaving the ATZ. |
 | Scottish Information | 119.875 | Carlisle → East Fortune, ~75 nm. A long listening watch with position reports: the "get on with something else and listen for your callsign" mode. |
 | Leeds: your own route | Leeds Radar 134.580 | Any route you describe. See below. |
+| Listen out | Any of the above units | No calls to make: sit on the frequency and listen to the traffic. |
 
 ## Your own route (Leeds so far)
 
@@ -48,15 +49,25 @@ airspace you turn straight away and the controller re-clears you or carries on w
 it, the new route shows dashed and you keep to your clearance until they approve (“roger, route direct Wetherby…”)
 or say “unable, continue as cleared”. Before your first call it simply re-plans.
 
+## Listening out
+
+Pick **Listen out**, choose a frequency and press on. Nothing is expected of you: the traffic talks, you listen.
+Good for getting a unit's rhythm into your ear, or leaving on while you do something else. Turn *Other traffic* up
+for a busy frequency, and turn the text on if you want to check what you heard.
+
 ## Using it
 
 1. Open it in **Chrome** (Pixel or MacBook). Speech recognition is Chrome-only.
 2. Pick aircraft and scenario, set traffic and flight-time speed, then **Brief me** → **Start flight**.
 3. **Hold** the big button (or the space bar) to transmit. Press, pause a beat, speak, release.
-4. Use headphones so the controller's voice doesn't reach the mic.
-5. **Controller voice**: each unit gets its own voice, so Leeds and Edinburgh sound like different people. Pick one
+4. **Do as you're told, not just say it.** Tap the transponder to set a squawk or press IDENT, and press *Orbit* on
+   the map when told to orbit. Read a squawk back and leave the box on 7000 and you'll be chased for it, then asked
+   to reset it and ident, exactly as happens in the air.
+5. Use headphones so the controller's voice doesn't reach the mic.
+6. **Controller voice**: each unit gets its own voice, so Leeds and Edinburgh sound like different people. Pick one
    to use everywhere instead, and press *Hear it* to compare.
-6. **End & debrief** at any time. The debrief lists every call, what was missing, and the better wording.
+7. **End & debrief** at any time. The debrief lists every call, what was missing, the better wording, and anything
+   you read back but never did.
 
 ### What the controller does
 - Checks readbacks item by item (level, pressure, squawk, route, frequency, service, "wilco").
@@ -96,7 +107,9 @@ See `docs/deploy.md`.
 
 ## Known limits
 - Chrome's speech recognition runs on Google's servers, so transmitting needs data signal.
-- The synthesised voices can't be band-limited like a real radio; static and squelch clicks go around them.
+- The synthesised voices can't be band-limited like a real radio; static and squelch clicks go around them. The
+  noise and the voice come out of different audio paths and can't be mixed, so on some devices (Android especially)
+  the voice is much quieter than the noise: *Radio noise* has Off, Quiet and Normal, and Quiet is the default.
 - Voice quality depends on the device. The app ranks the voices it finds (British first, Chrome's “Google UK English”
   and any enhanced/premium version preferred), never uses the novelty voices macOS ships, and gives each unit its own.
   On a Mac, Apple offers Oliver, Kate and Serena as downloads under System Settings → Accessibility → Spoken Content →
