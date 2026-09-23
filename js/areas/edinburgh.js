@@ -78,6 +78,11 @@ const LANDMARKS = [
   ['Threipmuir Reservoir', 55.8609, -3.32, 'reservoir', ['threipmuir', 'threep muir', 'trip moor'], 'Threep-mure'],
   ['Loch Leven', 56.1993, -3.3689, 'loch', ['loch leaven']], ['Bass Rock', 56.0775, -2.6406, 'island', ['the bass rock']],
   ['Berwick Law', 56.0488, -2.7138, 'hill', ['north berwick law', 'berrick law'], 'Berrick Law'],
+  // East Fortune: the flexwing school based there gives callsign East Fortune on 118.755, elevation 115 ft.
+  ['East Fortune', 56.0001, -2.7342, 'airfield', ['east fortune airfield', 'fortune', 'east fortune radio']],
+  // The Forth Road Bridge is the VRP; the other two of the three bridges are landmarks for orbiting them.
+  ['Forth Bridge', 55.9998, -3.3883, 'bridge', ['forth rail bridge', 'rail bridge', 'the bridges', 'the three bridges']],
+  ['Queensferry Crossing', 56.0012, -3.4148, 'bridge', ['queensferry crossing', 'the new bridge', 'crossing']],
 ];
 
 const lower = s => s.toLowerCase();
