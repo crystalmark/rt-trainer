@@ -3,6 +3,7 @@
 //  - debrief(): writes the end-of-session instructor debrief
 // The key is kept in this browser's localStorage only. See README for the trade-offs.
 import { MODELS } from './config.js';
+import { briefLine } from './scenarios/common.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
 
@@ -29,7 +30,8 @@ export class Claude {
   }
 
   async atc({ scenario, ctx, events, history, pilot, nav = null }) {
-    const briefing = scenario.briefing ? scenario.briefing(ctx).join(' ') : '';
+    const briefing = scenario.briefing
+      ? scenario.briefing(ctx).map(briefLine).map(b => (b.label ? `${b.label}: ${b.text}` : b.text)).join(' ') : '';
     const places = scenario.places ? `Published VRPs: ${scenario.places.filter(p => p.kind === 'vrp').map(p => p.name).join(', ')}. ` +
       `Other landmarks you may use for routing and positions: ${scenario.places.filter(p => p.kind !== 'vrp').map(p => p.name).join(', ')}. ` +
       'Never call anything else a VRP, and never invent frequencies. ' : '';

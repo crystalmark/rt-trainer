@@ -25,10 +25,11 @@ export function listenScenario(id) {
     freq: u.freq,
     traffic: u.traffic,
     briefing: () => [
-      `${u.unit} ${u.freq}. Sit and listen: no calls to make, nothing to read back.`,
-      u.about,
-      'Set “Other traffic” to busy for a packed frequency, or quiet for the long gaps you get in the real thing.',
-      'Turn the text on if you want to check what you heard. End whenever you have had enough.',
+      ['Listening', `${u.unit} ${u.freq}. No calls to make, nothing to read back.`],
+      ['Expect', u.about],
+      ['Traffic', 'Set “Other traffic” to busy for a packed frequency, or quiet for the long gaps you get in the real thing.'],
+      ['Text', 'Turn the text on if you want to check what you heard.'],
+      ['Finish', 'End whenever you have had enough.'],
     ],
     async run(s) {
       s.at('Listening out', `Listening out on ${u.unit} ${u.freq}. Nothing is expected of you.`);

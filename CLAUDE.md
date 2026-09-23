@@ -18,6 +18,8 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   another exchange, similar-callsign traps, background traffic, and hands over to Claude
   (`freeMode`) when the pilot goes off script.
 - `js/scenarios/*.js`: each scenario is `{ id, title, unit, freq, briefing(ctx), traffic(s), warn?, run(s) }`.
+  `briefing(ctx)` returns `['Label', 'text']` pairs, or `['Careful', 'text', 'warn']` for something to watch:
+  one fact per entry, because the briefing screen gives each its own labelled row (a test enforces both).
   `run` is an async script using the scenario API: `s.atc(text, { readback, model, clearance, reply })`,
   `s.expect({ id, cue, items, nudge, optional, initial, model })`, `s.leg(label, nm, { cue })`,
   `s.chance(p)`, `s.setRadio({ qnh })`, `s.note(text)`, `s.end(summary)`.

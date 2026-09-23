@@ -6,6 +6,10 @@ import { PROFILES } from '../js/config.js';
 import { fakeClock, fakeRadio, seeded, perfectPilot, sendWhenClear } from './helpers.mjs';
 import { listenScenario, LISTEN_UNITS } from '../js/scenarios/listen.js';
 import { computeDebrief } from '../js/debrief.js';
+import { briefLine } from '../js/scenarios/common.js';
+import { AREAS } from '../js/areas/index.js';
+import { parseRoute } from '../js/route.js';
+import { customScenario } from '../js/scenarios/custom.js';
 
 function run(scenario, profile, seed, { settings = {}, pilot = perfectPilot, override } = {}) {
   const clock = fakeClock(4000);
@@ -187,4 +191,27 @@ test("the recogniser's other guesses are matched too", async () => {
   assert.match(rb.text, /squawk 5634/, 'the better guess was used');
   assert.match(rb.heard || '', /1000/, 'and the first one is kept for the debrief');
   assert.equal(events.filter(e => e.type === 'correction').length, 0, 'so no correction was needed');
+});
+
+// The briefing screen puts one fact on each row, so each entry must be a labelled one-liner. A three-sentence
+// entry is the bunched-up prose this replaced.
+test('every briefing is a list of labelled items, one fact each', () => {
+  const leeds = AREAS.find(a => a.id === 'leeds');
+  const ctx = { reg: 'G-CZIA', abbr: 'G-IA', type: 'QuikR microlight', transponder: true, speedKt: 65 };
+  const own = customScenario(leeds, parseRoute('Skipton to Wetherby via Salts Mill and Eccup Reservoir at 2800 ft', leeds));
+  const all = [...SCENARIOS, own, listenScenario('leeds')];
+  for (const s of all) {
+    const lines = s.briefing(ctx);
+    assert.ok(lines.length >= 4, `${s.id}: only ${lines.length} briefing items`);
+    const labels = new Set();
+    for (const l of lines) {
+      const { label, text, kind } = briefLine(l);
+      assert.ok(label, `${s.id}: unlabelled briefing item "${text}"`);
+      assert.ok(label.length <= 14, `${s.id}: label too long for the column: "${label}"`);
+      assert.ok(text.length <= 190, `${s.id}: "${label}" is a paragraph, not an item`);
+      assert.ok(!kind || kind === 'warn', `${s.id}: unknown kind "${kind}"`);
+      labels.add(label);
+    }
+    assert.ok(labels.has('Aircraft') || s.listen, `${s.id}: no aircraft line`);
+  }
 });

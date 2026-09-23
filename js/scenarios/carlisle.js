@@ -16,9 +16,11 @@ export const carlisleArrival = {
   traffic: carlisleTraffic,
   warn: AG_WARN,
   briefing: ctx => [
-    `${ctx.reg} (${ctx.type}), inbound to Carlisle from the north. PPR done by phone (01228 573641).`,
-    'Carlisle Radio is Air/Ground, staffed on weekdays when possible. If nobody answers, make blind calls: “Carlisle Traffic … Carlisle”.',
-    'Left-hand circuits at 1000 ft QFE; overhead join at 2000 ft QFE. QFE is about QNH − 7.',
+    ['Aircraft', `${ctx.reg}, ${ctx.type}, 1 POB.`],
+    ['Flight', 'Inbound to Carlisle from the north, 10 nm out at 2500 ft. PPR done by phone (01228 573641).'],
+    ['Station', 'Carlisle Radio is Air/Ground, staffed on weekdays when possible: information only, never a clearance.'],
+    ['If no answer', 'Make blind calls: “Carlisle Traffic … Carlisle”.'],
+    ['Circuit', 'Left-hand at 1000 ft QFE; overhead join at 2000 ft QFE. QFE is about QNH − 7.'],
   ],
   async run(s) {
     const { ctx } = s;
@@ -71,8 +73,10 @@ export const carlisleDeparture = {
   traffic: carlisleTraffic,
   warn: AG_WARN,
   briefing: ctx => [
-    `${ctx.reg} (${ctx.type}) on the south apron, ready to go home to the north. Engine running, checks done.`,
-    'Announce your intentions: nobody will clear you. Leave the ATZ to the north, then change to Scottish Information 119.875.',
+    ['Aircraft', `${ctx.reg}, ${ctx.type}, 1 POB. On the south apron, engine running, checks done.`],
+    ['Flight', 'Home to the north, VFR.'],
+    ['Plan', 'Announce your intentions: nobody will clear you. Leave the ATZ to the north.'],
+    ['Then', 'Change to Scottish Information 119.875.'],
   ],
   async run(s) {
     await s.leg('South apron', 0.3, { cue: 'Make your first call.' });

@@ -7,6 +7,7 @@ import { parseRoute, planRoute, routeText, mapPoints } from './route.js';
 import { MovingMap } from './map.js';
 import { customScenario } from './scenarios/custom.js';
 import { LISTEN_UNITS, listenScenario } from './scenarios/listen.js';
+import { briefLine } from './scenarios/common.js';
 import { PROFILES } from './config.js';
 import { BrowserRadio, realClock, voiceChoices, voiceForUnit } from './radio.js';
 import { PushToTalk } from './ptt.js';
@@ -246,7 +247,7 @@ function renderBrief() {
   $('brief-aircraft').textContent = `${p.reg} · ${p.transponder ? 'Mode S' : 'No transponder'}`;
   $('brief-title').textContent = s.title;
   $('brief-sub').textContent = s.subtitle;
-  $('brief-lines').innerHTML = s.briefing(engineCtxPreview()).map(l => `<li>${esc(l)}</li>`).join('');
+  $('brief-lines').innerHTML = briefRows(s.briefing(engineCtxPreview()));
   $('brief-unit').textContent = s.unit; $('brief-freq').textContent = s.freq;
   $('brief-map').hidden = !s.plan;
   if (s.plan) {                                   // your own route: see it on the map before you go
@@ -256,6 +257,17 @@ function renderBrief() {
     state.briefMap.fit(mapPoints(s.plan));
   }
   show('brief');
+}
+
+// One row per briefing item, label beside the text, so nothing runs together. A label repeated by the
+// next item (several warnings, say) is printed once and the run reads as a group.
+function briefRows(lines) {
+  let last = null;
+  return lines.map(briefLine).map(({ label, text, kind }) => {
+    const head = label && label !== last ? esc(label) : '';
+    last = label;
+    return `<div${kind === 'warn' ? ' class="caution"' : ''}><dt>${head}</dt><dd>${esc(text)}</dd></div>`;
+  }).join('');
 }
 
 // ---------------- flight ----------------

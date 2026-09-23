@@ -8,9 +8,11 @@ export default {
   freq: '119.875',
   traffic: scottishTraffic,
   briefing: ctx => [
-    `${ctx.reg} (${ctx.type}), Carlisle to East Fortune via Langholm, Hawick and Lauder, about 75 nm.`,
-    'A long listening watch: other aircraft giving position reports, broadcasts, and occasional calls to you. Get on with something else and listen for your callsign.',
-    'Scottish Information 119.875 (0800–2000, surface to FL55). Basic Service only: no radar, you avoid traffic.',
+    ['Aircraft', `${ctx.reg}, ${ctx.type}, 1 POB.`],
+    ['Flight', 'Carlisle to East Fortune via Langholm, Hawick and Lauder, VFR. About 75 nm.'],
+    ['Service', 'Basic Service only: no radar, you avoid the traffic yourself.'],
+    ['Hours', 'Scottish Information is 0800–2000, surface to FL55.'],
+    ['Expect', 'A long listening watch: position reports from other aircraft, broadcasts, and occasional calls to you. Get on with something else and listen for your callsign.'],
   ],
   async run(s) {
     const { ctx } = s;

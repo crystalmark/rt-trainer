@@ -120,7 +120,17 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--lcd); }
 .miccheck { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .miccheck select { flex: 1 1 240px; }
 .history { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
-.brief-lines { margin: 0; padding-left: 18px; display: grid; gap: 6px; max-width: 64ch; }
+/* One row per briefing item: a short label, then the fact. Sized so a phone reads it a line at a time. */
+.brief-lines { margin: 0; display: grid; max-width: 68ch; }
+.brief-lines > div { display: grid; gap: 1px 16px; padding: 10px 0; border-top: 1px solid var(--rule); }
+.brief-lines > div:first-child { border-top: 0; padding-top: 0; }
+.brief-lines dt { font: 600 12px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.brief-lines dd { margin: 0; text-wrap: pretty; }
+.brief-lines .caution dt, .brief-lines .caution dd { color: var(--warn); }
+@media (min-width: 620px) {
+  .brief-lines > div { grid-template-columns: 8.5rem 1fr; }
+  .brief-lines dt { text-align: right; padding-top: 3px; }
+}
 .freqcard { display: flex; justify-content: space-between; align-items: baseline; background: var(--lcd-bg); border: 1px solid #3A2C0E; border-radius: 6px; padding: 10px 14px; color: var(--lcd); font: 600 18px var(--display); letter-spacing: .06em; text-transform: uppercase; }
 .freqcard .mono { font-size: 24px; }
 

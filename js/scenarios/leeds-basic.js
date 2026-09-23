@@ -10,9 +10,11 @@ export default {
   traffic: leedsTraffic,
   places: areaById('leeds').places,
   briefing: ctx => [
-    `${ctx.reg} (${ctx.type}${ctx.transponder ? ', Mode S' : ', no transponder'}), local flight from home towards Burnley, staying outside controlled airspace.`,
-    'You want a Basic Service from Leeds Radar while you pass close to the western edge of the CTR.',
-    'Mostly listening: expect long gaps, other traffic, and the odd call to you. Don’t miss your callsign.',
+    ['Aircraft', `${ctx.reg}, ${ctx.type}, ${ctx.transponder ? 'Mode S' : 'no transponder'}, 1 POB.`],
+    ['Flight', 'Local flight from home towards Burnley, VFR, staying outside controlled airspace.'],
+    ['Start', '2 nm north of Skipton, 2500 ft on 1016.'],
+    ['Ask for', 'A Basic Service from Leeds Radar, as you pass close to the western edge of the CTR.'],
+    ['Expect', 'Mostly listening: long gaps, other traffic, and the odd call to you. Don’t miss your callsign.'],
   ],
   async run(s) {
     const { ctx } = s;

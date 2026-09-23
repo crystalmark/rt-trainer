@@ -46,15 +46,18 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     const mins = Math.round(planned.total / ctx.speedKt * 60);
     const base = v => v.base ? `from ${v.base} ft` : 'from the surface';
     return [
-      `${ctx.reg} (${ctx.type}${ctx.transponder ? ', Mode S' : ', no transponder'}), ${first.name} to ${destination(planned).name}, 1 POB.`,
-      `Route ${routeText(points)}: ${Math.round(planned.total)} nm, about ${mins} min at ${ctx.speedKt} kt. Planned altitude ${altitude} ft, QNH ${q0}.`,
-      T ? `You reach ${T.entryVolume.name} (Class ${T.entryVolume.cls}, ${base(T.entryVolume)}) after ${Math.round(T.sIn)} nm and leave controlled airspace to the ${T.exitSide} after ${Math.round(T.sOut)} nm. Ask ${area.unit} for a transit.`
-        : `At ${altitude} ft the route stays outside controlled airspace, ${miles(planned.closest.d)} from ${planned.closest.volume.name} at the closest. Ask ${area.unit} for a Basic Service.`,
-      ...planned.under.map(u => `You pass under ${u.volume.name}: its base is ${u.volume.base} ft, only ${u.gap} ft above you.`),
-      ...planned.warnings,
-      `${area.name} VRPs: ${vrps}. They're reporting references: pass near them rather than overhead.`,
-      ...area.facts,
-      T ? 'Plan B if the transit is refused: route round, remaining outside controlled airspace (tap a place on the map: Direct to or Divert).' : '',
+      ['Aircraft', `${ctx.reg}, ${ctx.type}, ${ctx.transponder ? 'Mode S' : 'no transponder'}, 1 POB.`],
+      ['Flight', `${first.name} to ${destination(planned).name}, VFR.`],
+      ['Route', `${routeText(points)} · ${Math.round(planned.total)} nm · about ${mins} min at ${ctx.speedKt} kt`],
+      ['Level', `Altitude ${altitude} ft, QNH ${q0}.`],
+      T ? ['Transit', `You reach ${T.entryVolume.name} (Class ${T.entryVolume.cls}, ${base(T.entryVolume)}) after ${Math.round(T.sIn)} nm, and leave controlled airspace to the ${T.exitSide} after ${Math.round(T.sOut)} nm.`]
+        : ['Airspace', `At ${altitude} ft the route stays outside controlled airspace, ${miles(planned.closest.d)} from ${planned.closest.volume.name} at the closest.`],
+      ['Ask for', T ? `A Basic Service and a zone transit from ${area.unit}.` : `A Basic Service from ${area.unit}.`],
+      ...planned.under.map(u => ['Careful', `You pass under ${u.volume.name}: its base is ${u.volume.base} ft, only ${u.gap} ft above you.`, 'warn']),
+      ...planned.warnings.map(w => ['Careful', w, 'warn']),
+      ['VRPs', `${vrps}. They're reporting references: pass near them rather than overhead.`],
+      ...area.facts.map(f => ['Local', f]),
+      T ? ['Plan B', 'If the transit is refused, route round remaining outside controlled airspace: tap a place on the map, then Direct to or Divert.'] : null,
     ].filter(Boolean);
   }
 

@@ -8,10 +8,12 @@ export default {
   freq: '121.205',
   traffic: edinburghTraffic,
   briefing: ctx => [
-    `${ctx.reg} (${ctx.type}${ctx.transponder ? ', Mode S' : ', no transponder'}), East Fortune to Perth, 1 POB.`,
-    'Departed East Fortune, 4 nm east of Haddington, 1800 ft on 1011. Plan: into the CTR at Musselburgh, across the Forth to Kirkcaldy Harbour.',
-    'VFR in the zone is normally not above 2000 ft. Over the water you may want more height for glide range: ask if you do.',
-    'Edinburgh Approach 121.205. Runway 24 in use.',
+    ['Aircraft', `${ctx.reg}, ${ctx.type}, ${ctx.transponder ? 'Mode S' : 'no transponder'}, 1 POB.`],
+    ['Flight', 'East Fortune to Perth, VFR.'],
+    ['Start', 'Departed East Fortune, 4 nm east of Haddington, 1800 ft on 1011.'],
+    ['Plan', 'Into the CTR at Musselburgh, across the Forth to Kirkcaldy Harbour.'],
+    ['Level', 'VFR in the zone is normally not above 2000 ft. Over the water you may want more height for glide range: ask if you do.'],
+    ['Edinburgh', 'Runway 24 in use.'],
   ],
   async run(s) {
     const { ctx } = s;

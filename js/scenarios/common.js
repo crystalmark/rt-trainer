@@ -4,6 +4,15 @@
 
 export const P = (label, any, o = {}) => ({ label, any: [].concat(any), hard: !o.soft, ...o });
 
+/**
+ * A briefing entry is ['Label', 'text'], or ['Label', 'text', 'warn'] for something to watch out for;
+ * a bare string still works and prints without a label. One fact per entry: the briefing screen gives
+ * each its own row, so a line carrying three facts is three entries.
+ */
+export const briefLine = l => (Array.isArray(l)
+  ? { label: l[0] || '', text: l[1] || '', kind: l[2] || '' }
+  : { label: '', text: String(l), kind: '' });
+
 export const WILCO = () => P('wilco', ['wilco'], { soft: true, why: 'Instructions to report later are acknowledged with “wilco”.' });
 export const QNH = (v, name = 'QNH') => P(`${name} ${v}`, [String(v)], { fix: `${name} ${v}` });
 export const SQUAWK = v => P(`squawk ${v}`, [String(v)], { fix: `squawk ${v}` });

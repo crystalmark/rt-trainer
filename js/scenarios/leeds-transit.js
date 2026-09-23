@@ -12,10 +12,13 @@ export default {
   traffic: leedsTraffic,
   places: areaById('leeds').places,
   briefing: ctx => [
-    `${ctx.reg} (${ctx.type}${ctx.transponder ? ', Mode S' : ', no transponder'}), Kirkbride to Sherburn in Elmet, 1 POB. Flight details emailed to Leeds ATC this morning.`,
-    'You start about 12 nm north-west of the Leeds CTR near Skipton, 2800 ft on 1016, under CTA 3 (base 3000 ft). Plan: past Keighley, then through the zone via the Salts Mill and Eccup Reservoir VRPs.',
-    'Plan B if refused: route west of the zone via Oxenhope.',
-    'Leeds Radar 134.580. Runway 32 in use, airliners arriving from the south-east.',
+    ['Aircraft', `${ctx.reg}, ${ctx.type}, ${ctx.transponder ? 'Mode S' : 'no transponder'}, 1 POB.`],
+    ['Flight', 'Kirkbride to Sherburn in Elmet, VFR. Flight details emailed to Leeds ATC this morning.'],
+    ['Start', '12 nm north-west of the Leeds CTR near Skipton, 2800 ft on 1016.'],
+    ['Careful', 'You are under CTA 3, base 3000 ft: only 200 ft above you.', 'warn'],
+    ['Plan', 'Past Keighley, then through the zone via the Salts Mill and Eccup Reservoir VRPs.'],
+    ['Plan B', 'If refused, route west of the zone via Oxenhope.'],
+    ['Leeds', 'Runway 32 in use, airliners arriving from the south-east.'],
   ],
   async run(s) {
     const { ctx } = s;
