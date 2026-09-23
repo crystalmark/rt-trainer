@@ -1,6 +1,8 @@
 // East Fortune to the Forth bridges and home again: across Edinburgh on a zone transit, orbits over the three
 // bridges, and back. The route is Tim's own from flying it: East Fortune, Musselburgh, Arthur's Seat, the airport
 // overhead, the bridges; five orbits, then "finished at the bridges", told to hold, then back via the overhead.
+// "The overhead" in practice: GA are sent north of the runway threshold, and on this line that is 24's, at the
+// north-east end (Edinburgh has one runway, 06/24; the 06 end would be twice the detour).
 // Graeme Ritchie's "Edinburgh Transit RT" (2017) gives the rest of the radio: East Fortune Radio, then Edinburgh
 // Approach; cleared into the zone via Musselburgh not above 2000 ft; squawk 7000, frequency change approved.
 //
@@ -13,8 +15,8 @@ import { planRoute, whereIs } from '../route.js';
 
 const area = AREAS.find(a => a.id === 'edinburgh');
 const place = name => area.places.find(p => p.name === name);
-const ROUTE = ['East Fortune', 'Musselburgh', "Arthur's Seat", 'Edinburgh Airport', 'Forth Road Bridge',
-  'Edinburgh Airport', "Arthur's Seat", 'Musselburgh', 'East Fortune'];
+const ROUTE = ['East Fortune', 'Musselburgh', "Arthur's Seat", 'Runway 24 threshold', 'Forth Road Bridge',
+  'Runway 24 threshold', "Arthur's Seat", 'Musselburgh', 'East Fortune'];
 const ALTITUDE = 1500;                                     // under CTA 2 (base 2500) until the zone
 const PLAN = planRoute(area, ROUTE.map(place), ALTITUDE);
 if (PLAN.errors.length) throw new Error(`Forth bridges route: ${PLAN.errors[0]}`);
@@ -48,10 +50,10 @@ export const forthBridges = {
     ['East Fortune', 'East Fortune Radio 118.755: Air/Ground when someone is on, otherwise blind calls as “East Fortune Traffic”.'],
     ['Airfield', 'Elevation 115 ft, runways 29L/11R and 25L/07R, overhead join 2000 ft, circuit 1000 ft QFE.'],
     ['Circuits', '29 and 25 left-hand; 11 and 07 right-hand.'],
-    ['Edinburgh', 'Edinburgh Approach 121.205. Expect Musselburgh, Arthur’s Seat and the airport overhead, not above 2000 ft.'],
+    ['Edinburgh', 'Edinburgh Approach 121.205. Expect Musselburgh, Arthur’s Seat, then north of the runway 24 threshold, not above 2000 ft.'],
     ['Transit', `You reach the CTR after ${Math.round(T.sIn)} nm; its edge is a 10 nm circle round the airport.`],
     ['At the bridges', 'Ask for orbits. Press Orbit on the map, and call “finished at the bridges” when you have had enough: five orbits is about ten minutes.'],
-    ['Careful', 'You cross the airport overhead both ways: listen for the traffic they tell you about on the runway.', 'warn'],
+    ['Careful', 'You cross just north of the runway 24 threshold both ways, right where arrivals for 24 cross the coast: listen for the traffic they tell you about.', 'warn'],
   ],
 
   async run(s) {
@@ -133,23 +135,25 @@ export const forthBridges = {
     const svc = x ? 'radar control service' : 'control service';
     await s.reach(at('Musselburgh'), { label: 'Musselburgh', early: true });
     await s.expect({ id: 'report-musselburgh', cue: 'Musselburgh.', nudge: '{CALL}, report your position', items: [named('Musselburgh')], model: '{CALL}, Musselburgh' });
-    await s.atc(`{CALL}, roger, ${svc}, route via Arthur's Seat and the overhead to the Forth bridges, report Arthur's Seat`, {
-      readback: [P('control service', ['control service'], { fix: svc }), named("Arthur's Seat", "route via Arthur's Seat and the overhead"),
-        P('the overhead', ['overhead'], { fix: "route via Arthur's Seat and the overhead" }), WILCO()],
-      model: `${svc[0].toUpperCase() + svc.slice(1)}, via Arthur's Seat and the overhead to the Forth bridges, wilco, {CALL}` });
+    await s.atc(`{CALL}, roger, ${svc}, route via Arthur's Seat to the Forth bridges, report Arthur's Seat`, {
+      readback: [P('control service', ['control service'], { fix: svc }), named("Arthur's Seat", "route via Arthur's Seat"), WILCO()],
+      model: `${svc[0].toUpperCase() + svc.slice(1)}, via Arthur's Seat to the Forth bridges, wilco, {CALL}` });
     await s.reach(at("Arthur's Seat"), { label: "Arthur's Seat", early: true });
     await s.expect({ id: 'report-arthurs-seat', cue: "Arthur's Seat.", nudge: '{CALL}, report your position', items: [named("Arthur's Seat")], model: "{CALL}, Arthur's Seat" });
-    await s.atc('{CALL}, roger, report overhead', { readback: [WILCO()], model: 'Wilco, {CALL}' });
+    await s.atc('{CALL}, roger, pass north of the runway 24 threshold, report overhead', {
+      readback: [P('north of the threshold', ['north of the threshold', 'north of the 24 threshold', 'threshold', 'north of'], { fix: 'pass north of the runway 24 threshold' }),
+        P('runway 24', ['24'], { soft: true }), WILCO()],
+      model: 'North of the runway 24 threshold, wilco, {CALL}' });
     if (s.chance(0.6)) {
-      await s.reach(Math.max(s.position().s + 0.5, at('Edinburgh Airport') - 3), { label: 'Across the city' });
+      await s.reach(Math.max(s.position().s + 0.5, at('Runway 24 threshold') - 3), { label: 'Across the city' });
       await s.atc(`{CALL}, traffic, ${s.pick(['ten', 'eleven', 'one', 'two'])} o'clock, 3 miles, an Embraer on final for runway 24, indicating 1200 feet`, {
         readback: [P('acknowledged', ['looking', 'traffic in sight', 'in sight', 'visual', 'negative contact'],
           { why: 'Answer traffic information with “looking”, “traffic in sight” or “negative contact”.' })],
         model: 'Traffic in sight, {CALL}' });
     }
-    await s.reach(at('Edinburgh Airport'), { label: 'The airport overhead', early: true });
-    await s.expect({ id: 'report-overhead', cue: 'Overhead the airport.', nudge: '{CALL}, report your position',
-      items: [P('overhead', ['overhead'])], model: '{CALL}, overhead' });
+    await s.reach(at('Runway 24 threshold'), { label: 'North of the runway 24 threshold', early: true });
+    await s.expect({ id: 'report-overhead', cue: 'Passing north of the runway 24 threshold.', nudge: '{CALL}, report your position',
+      items: [P('overhead', ['overhead', 'threshold', 'north of', 'passing'])], model: '{CALL}, overhead, north of the 24 threshold' });
     await s.atc('{CALL}, roger, report approaching the bridges', { readback: [WILCO()], model: 'Wilco, {CALL}' });
     await s.reach(Math.max(s.position().s + 0.3, at('Forth Road Bridge') - 1), { label: 'Towards the Forth bridges', early: true });
     await s.expect({ id: 'approaching-bridges', cue: 'Approaching the bridges. Ask for your orbits.', nudge: '{CALL}, report your position',
@@ -173,14 +177,15 @@ export const forthBridges = {
     await s.atc('{CALL}, roger, hold at the bridges', {
       readback: [P('hold', ['hold', 'holding', 'orbit'], { fix: 'hold at the bridges' })], model: 'Hold at the bridges, {CALL}' });
     await s.leg('Holding at the bridges', ctx.speedKt * 2 / 60, { cue: 'Keep orbiting: they are fitting you in between arrivals.' });
-    await s.atc('{CALL}, route to the overhead, not above altitude 2000 feet, report overhead', {
-      readback: [P('the overhead', ['overhead'], { fix: 'route to the overhead' }), ...NOT_ABOVE(2000), WILCO()],
-      model: 'To the overhead, not above altitude 2000 feet, wilco, {CALL}' });
+    await s.atc('{CALL}, route to the overhead, pass north of the runway 24 threshold, not above altitude 2000 feet, report overhead', {
+      readback: [P('the overhead', ['overhead'], { fix: 'route to the overhead' }), P('north of the threshold', ['north of the threshold', 'north of the 24 threshold', 'threshold', 'north of'], { fix: 'pass north of the runway 24 threshold' }),
+        P('runway 24', ['24'], { soft: true }), ...NOT_ABOVE(2000), WILCO()],
+      model: 'To the overhead, north of the runway 24 threshold, not above altitude 2000 feet, wilco, {CALL}' });
     await s.action({ id: 'orbit-stop', action: 'orbit', value: false, cue: 'Stop orbiting: press Orbit again.',
       done: () => !s.orbiting(), nudge: '{CALL}, confirm routing to the overhead', timeout: 15 });
-    await s.reach(at('Edinburgh Airport', 1), { label: 'The airport overhead', early: true });
-    await s.expect({ id: 'report-overhead-2', cue: 'Overhead the airport.', nudge: '{CALL}, report your position',
-      items: [P('overhead', ['overhead'])], model: '{CALL}, overhead' });
+    await s.reach(at('Runway 24 threshold', 1), { label: 'North of the runway 24 threshold', early: true });
+    await s.expect({ id: 'report-overhead-2', cue: 'Passing north of the runway 24 threshold.', nudge: '{CALL}, report your position',
+      items: [P('overhead', ['overhead', 'threshold', 'north of', 'passing'])], model: '{CALL}, overhead, north of the 24 threshold' });
     await s.atc(`{CALL}, roger, route via Arthur's Seat and Musselburgh, leave the zone east, not above altitude 2000 feet, report leaving controlled airspace`, {
       readback: [named("Arthur's Seat", "route via Arthur's Seat and Musselburgh"), named('Musselburgh', "route via Arthur's Seat and Musselburgh"),
         P('leave the zone', ['leave the zone', 'leave', 'leaving'], { fix: 'leave the zone east' }), ...NOT_ABOVE(2000), WILCO()],

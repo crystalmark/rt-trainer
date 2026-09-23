@@ -82,6 +82,8 @@ const LANDMARKS = [
   ['East Fortune', 56.0001, -2.7342, 'airfield', ['east fortune airfield', 'fortune', 'east fortune radio']],
   // The airport itself, for routeing via the overhead: at the ARP (AD 2.2), 2.5 nm ATZ to 2112 ft ALT around it.
   ['Edinburgh Airport', 55.95, -3.3725, 'airfield', ['edinburgh airport', 'the airport', 'overhead the airport', 'the overhead', 'airport overhead']],
+  // GA crossing the airport is sent north of the runway 24 threshold, the north-east end (AD 2.12: 555717.66N 0032128.66W).
+  ['Runway 24 threshold', 55.95491, -3.35796, 'point', ['24 threshold', 'runway 24 threshold', 'the threshold', 'north of the threshold', 'overhead']],
   // The Forth Road Bridge is the VRP; the other two of the three bridges are landmarks for orbiting them.
   ['Forth Bridge', 55.9998, -3.3883, 'bridge', ['forth rail bridge', 'rail bridge', 'the bridges', 'the three bridges']],
   ['Queensferry Crossing', 56.0012, -3.4148, 'bridge', ['queensferry crossing', 'the new bridge', 'crossing']],
