@@ -85,6 +85,7 @@ export class BrowserRadio {
   }
 
   async _say(speaker, speech) {
+    if (this.closed) return { interrupted: true };     // queued before the flight ended: say nothing
     this.busy = true; this.currentSpeaker = speaker; this.interrupted = false;
     this.squelch(true);
     await wait(60 + Math.random() * 90);
@@ -115,7 +116,7 @@ export class BrowserRadio {
   }
 
   squelch(open) {
-    if (!this.ac) return;
+    if (!this.ac || this.closed) return;
     const now = this.ac.currentTime;
     this.noiseGain.gain.cancelScheduledValues(now);
     if (open) {
@@ -129,6 +130,7 @@ export class BrowserRadio {
   }
 
   click(level = 0.3) {
+    if (!this.ac || this.closed) return;
     const o = this.ac.createOscillator(), g = this.ac.createGain();
     o.type = 'square'; o.frequency.value = 180;
     g.gain.setValueAtTime(level, this.ac.currentTime);
@@ -146,7 +148,7 @@ export class BrowserRadio {
   }
 
   startHeterodyne() {
-    if (!this.ac || this.het) return;
+    if (!this.ac || this.closed || this.het) return;
     const g = this.ac.createGain(); g.gain.value = 0.08;
     const a = this.ac.createOscillator(), b = this.ac.createOscillator();
     a.frequency.value = 1020; b.frequency.value = 1090;
@@ -164,13 +166,19 @@ export class BrowserRadio {
   /** 'off' | 'low' | 'normal', changeable in flight. */
   setNoise(level) {
     this.noise = NOISE[level] || NOISE.low;
-    if (this.ac && !this.busy) this.noiseGain.gain.setTargetAtTime(this.noise.idle, this.ac.currentTime, 0.05);
+    if (this.ac && !this.closed && !this.busy) this.noiseGain.gain.setTargetAtTime(this.noise.idle, this.ac.currentTime, 0.05);
   }
 
+  // Off, not merely quiet. Turning the noise down was undone by the last transmission finishing afterwards —
+  // its squelch tail sets the hiss back to idle — and every flight makes a new radio with its own audio
+  // context, so one left hissing went on over the debrief and into the next flight.
   stopAll() {
     speechSynthesis.cancel();
     this.stopHeterodyne();
-    if (this.ac) this.noiseGain.gain.setTargetAtTime(0, this.ac.currentTime, 0.05);
+    this.closed = true;
+    if (!this.ac) return;
+    try { this.noiseSrc?.stop(); } catch { /* already stopped */ }
+    this.ac.close?.().catch(() => {});
   }
 }
 
