@@ -11,11 +11,29 @@
 
 const ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
 const EVENTS = ['audiostart', 'soundstart', 'speechstart', 'speechend', 'soundend', 'audioend', 'nomatch'];
-const HEARD = ['audiostart', 'soundstart', 'speechstart', 'result'];
+const SOUND = ['soundstart', 'speechstart', 'result'];
+
+// Chrome on a desktop sends each finished phrase once. Chrome on Android sends the whole transmission again each
+// time it adds a word — "light", "light Oxenhope", "light Oxenhope Ilkley" — and joining those repeated it all,
+// dozens of times over. A result that carries on from the one before replaces it rather than following it; the
+// last word of the earlier one may have been revised meanwhile, so it is not held to.
+const plain = t => String(t).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+export function continues(prev, next) {
+  const p = plain(prev).split(' '), n = plain(next).split(' ');
+  if (!p[0] || n.length < p.length) return false;
+  const keep = p.length > 1 ? p.length - 1 : p.length;
+  for (let i = 0; i < keep; i++) if (p[i] !== n[i]) return false;
+  return true;
+}
+/** What was said so far: the finished part and the provisional tail, however this Chrome reports them. */
+export function spoken(fin, interim) {
+  fin = fin.trim(); interim = interim.trim();
+  return !interim ? fin : !fin ? interim : continues(fin, interim) ? interim : `${fin} ${interim}`;
+}
 
 export class PushToTalk {
-  constructor({ button, onDown, onUp, onInterim, onHotMic, onLevel, isRadioBusy, onNotice, exclusive = ANDROID }) {
-    Object.assign(this, { button, onDown, onUp, onInterim, onHotMic, onLevel, isRadioBusy, onNotice, exclusive });
+  constructor({ button, onDown, onUp, onInterim, onHotMic, onLevel, isRadioBusy, onNotice, onListening, exclusive = ANDROID }) {
+    Object.assign(this, { button, onDown, onUp, onInterim, onHotMic, onLevel, isRadioBusy, onNotice, onListening, exclusive });
     this.keyed = false;
     this.finalText = '';
     this.interimText = '';
@@ -65,25 +83,30 @@ export class PushToTalk {
     for (const ev of EVENTS) {
       rec.addEventListener(ev, mine(() => {
         this.trace.push(ev);
+        // The recogniser is only listening from here. On Android that is well after the press, and anything said
+        // before it is lost: the callsign, usually. So this is when to tell the pilot to speak.
+        if (ev === 'audiostart' && this.keyed) this.onListening?.();
         if (ev === 'soundstart' || ev === 'speechstart') this.hearing = true;
         if (ev === 'soundend' || ev === 'speechend') this.hearing = false;
       }));
     }
     rec.onresult = mine(e => {
-      let fin = '', interim = '';
-      const segments = [];                       // each final piece, with the alternatives Chrome offers for it
+      const finals = [];                         // each finished piece, with the alternatives Chrome offers for it
+      let interim = '';
       for (let i = 0; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) {
-          fin += r[0].transcript + ' ';
-          const alts = [];
-          for (let a = 0; a < r.length; a++) { const t = r[a].transcript.trim(); if (t && !alts.includes(t)) alts.push(t); }
-          segments.push(alts);
-        } else interim += r[0].transcript + ' ';
+        const r = e.results[i], best = r[0].transcript.trim();
+        if (!r.isFinal) { interim = spoken(interim, best); continue; }
+        const alts = [];
+        for (let a = 0; a < r.length; a++) { const t = r[a].transcript.trim(); if (t && !alts.includes(t)) alts.push(t); }
+        const sofar = finals.map(f => f.text).join(' ');
+        if (finals.length && continues(sofar, best)) finals.splice(0, finals.length, { text: best, alts });   // Android
+        else finals.push({ text: best, alts });
       }
-      this.finalText = fin; this.interimText = interim; this.segments = segments;
+      this.finalText = finals.map(f => f.text).join(' ');
+      this.interimText = interim;
+      this.segments = finals.map(f => f.alts);
       if (!this.trace.includes('result')) this.trace.push('result');
-      this.onInterim?.((fin + interim).trim());
+      this.onInterim?.(spoken(this.finalText, interim));
     });
     rec.onerror = mine(e => { this.lastError = e.error; this.trace.push(`error:${e.error}`); });
     rec.onend = mine(() => { this.trace.push('end'); this.hearing = false; this.endResolve?.(); });
@@ -135,9 +158,12 @@ export class PushToTalk {
     const ended = new Promise(r => { this.endResolve = r; });
     try { this.rec?.stop(); } catch { /* not running */ }
     if (this.trace.includes('start') && !this.trace.includes('end')) await Promise.race([ended, new Promise(r => setTimeout(r, 1500))]);
-    const text = (this.finalText || this.interimText).trim();
-    const heard = this.trace.some(t => HEARD.includes(t));
-    const error = text ? null : this.lastError || (heard ? 'heard sound but no words' : 'no sound reached the speech recogniser');
+    // Keep the provisional tail too: on Android your last words are often still provisional when you let go, and
+    // keeping only the finished part cut transmissions off mid-word ("QNH 10").
+    const text = spoken(this.finalText, this.interimText);
+    const heard = this.trace.some(t => SOUND.includes(t)), listening = this.trace.includes('audiostart');
+    const error = text ? null : this.lastError
+      || (heard ? 'heard sound but no words' : listening ? 'listening, but heard no speech' : 'no sound reached the speech recogniser');
     if (!text && !heard && !this.exclusive) {
       // The meter can hear you and the recogniser can't: they are fighting over the microphone. Let it have it.
       this.exclusive = true;

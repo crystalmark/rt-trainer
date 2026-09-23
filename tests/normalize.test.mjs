@@ -288,3 +288,11 @@ test('parallel runways are spoken digit by digit and then the side', () => {
   // ...and a pilot saying it either way is heard as the same runway
   assert.equal(normalize('runway two five left'), 'runway 25 left');
 });
+
+test('an abbreviated callsign survives a clipped alpha too', () => {
+  const form = t => (findCallsign(tokens(t), 'G-CZIA') || {}).form || null;
+  assert.equal(form('basic service squawk 5666 will remain outside of controlled airspace golf India alph'), 'abbr');
+  assert.equal(form('golf India Al'), 'abbr');
+  assert.equal(form('golf India requesting basic service'), null, 'the letters are not there');
+  assert.equal(form('golf India hotel'), null, 'a different aircraft');
+});

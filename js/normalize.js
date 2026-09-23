@@ -218,7 +218,7 @@ export function findCallsign(toks, reg) {
     if (form && (!best || rank(form) > rank(best.form))) best = { form, start: r.start, end: r.end };
   }
   if (best && best.form === 'full') return best;
-  return spelled(toks, full) || best;
+  return spelled(toks, full, 'full') || (best && best.form === 'abbr' ? best : spelled(toks, abbr, 'abbr')) || best;
   function rank(f) { return { full: 3, abbr: 2, partial: 1 }[f]; }
 }
 
@@ -230,7 +230,7 @@ export function findCallsign(toks, reg) {
  * couple of those. A single letter that is not the next one is a different aircraft, and stops the scan — so
  * G-CZIH is never read as G-CZIA. At least half the letters must still have arrived as letters.
  */
-function spelled(toks, full) {
+function spelled(toks, full, form = 'full') {
   for (let i = 0; i < toks.length; i++) {
     if (toks[i] !== full[0]) continue;
     let k = 1, j = i + 1, heard = 1, slack = 2;
@@ -243,7 +243,7 @@ function spelled(toks, full) {
       if (slack) { slack--; j++; continue; }                   // a stray word between the letters
       break;
     }
-    if (k === full.length && heard * 2 >= full.length) return { form: 'full', start: i, end: j - 1 };
+    if (k === full.length && heard * 2 >= full.length) return { form, start: i, end: j - 1 };
   }
   return null;
 }

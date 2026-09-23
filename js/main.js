@@ -302,9 +302,12 @@ async function begin() {
     else if (PushToTalk.supported()) {
       state.ptt = new PushToTalk({
         button: $('ptt'),
-        onDown: () => { state.radio.keyClick(); engine.pilotKeyDown(); $('ptt').classList.add('keyed'); $('lamp-tx').classList.add('on'); if ($('o-mine').checked) { $('mine').hidden = false; $('mine').textContent = '…'; } },
+        onDown: () => { engine.pilotKeyDown(); $('ptt').classList.add('keyed'); $('lamp-tx').classList.add('on'); $('ptt').querySelector('.ptt-label').textContent = 'WAIT…'; if ($('o-mine').checked) { $('mine').hidden = false; $('mine').textContent = '…'; } },
+        // The click is "you're on air": it comes when the recogniser is actually listening, which on Android is a
+        // noticeable beat after the press. Speak after the click and the start of the call isn't lost.
+        onListening: () => { state.radio.keyClick(); $('ptt').querySelector('.ptt-label').textContent = 'SPEAK'; },
         onUp: (text, meta) => {
-          state.radio.stopHeterodyne(); state.radio.keyClick();
+          state.radio.stopHeterodyne(); state.radio.keyClick(); $('ptt').querySelector('.ptt-label').textContent = 'HOLD TO TRANSMIT';
           $('ptt').classList.remove('keyed'); $('lamp-tx').classList.remove('on');
           if ($('o-mine').checked) $('mine').textContent = text ? `You: ${text}` : (meta.error ? `Not recognised (${meta.error})` : 'Not recognised');
           engine.pilotTransmission(text, meta);

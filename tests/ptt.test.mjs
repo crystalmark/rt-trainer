@@ -8,6 +8,8 @@ const live = new Set();                          // our getUserMedia tracks that
 const instances = [];
 let nextStartThrows = false;
 const WORDS = 'golf charlie zulu india alpha';
+const ANDROID_WORDS = 'golf charlie zulu india alpha microlight oxenhope ilkley skipton 1700 feet qnh 1018';
+let android = false;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 class FakeRecognition {
@@ -20,7 +22,15 @@ class FakeRecognition {
     setTimeout(() => {
       if (deaf || this.aborted) return;
       this.fire('audiostart'); this.fire('soundstart'); this.fire('speechstart');
-      this.onresult?.({ results: [Object.assign([{ transcript: WORDS }], { isFinal: true })] });
+      if (!android) { this.onresult?.({ results: [Object.assign([{ transcript: WORDS }], { isFinal: true })] }); return; }
+      // As on the Pixel: every result repeats the whole transmission so far, one word longer each time, and the
+      // last words are still provisional when the button is let go.
+      const words = ANDROID_WORDS.split(' '), results = [];
+      for (let n = 1; n <= words.length - 2; n++) {
+        results.push(Object.assign([{ transcript: words.slice(0, n).join(' ') }], { isFinal: true }));
+        this.onresult?.({ results: [...results] });
+      }
+      this.onresult?.({ results: [...results, Object.assign([{ transcript: ANDROID_WORDS }], { isFinal: false })] });
     }, 5);
   }
   stop() { setTimeout(() => this.onend?.(), 5); }
@@ -36,7 +46,7 @@ globalThis.window = {
 };
 globalThis.document = { activeElement: null };
 
-const { PushToTalk } = await import('../js/ptt.js');
+const { PushToTalk, continues, spoken } = await import('../js/ptt.js');
 
 function make(opts) {
   const got = [], notices = [];
@@ -88,4 +98,40 @@ test('ending a flight stops its recogniser and lets go of the microphone', async
   assert.equal(rec.aborted, true, 'a recogniser outliving its flight would hold the service');
   assert.equal(ptt.stream, null);
   assert.equal(live.size, 0);
+});
+
+// The Pixel transcript: "light light light Oxenhope light Oxenhope … light Oxenhope Ilkley Skipton Oxenhope 1,700
+// feet q nh10". Every result repeated the transmission so far; joined, it repeated the lot; and the end was lost.
+test('Android sends the whole transmission again with each word, and it is heard once, to the end', async () => {
+  android = true;
+  const { ptt, got } = make({ exclusive: true });
+  await ptt.init();
+  await press(ptt);
+  android = false;
+  assert.equal(got[0].text, ANDROID_WORDS, 'once, in full, with the provisional tail');
+  ptt.destroy();
+});
+
+test('carrying on from the last result is told apart from saying the next thing', () => {
+  assert.equal(continues('light', 'light'), true, 'the same again');
+  assert.equal(continues('light oxenhope', 'light Oxenhope Ilkley'), true, 'one word more');
+  assert.equal(continues('flight oxenhope', 'flight Oxenhope, Ilkley'), true, 'punctuation and case');
+  assert.equal(continues('light oxen', 'light Oxenhope Ilkley'), true, 'its last word revised');
+  assert.equal(continues('golf charlie zulu india alpha', 'microlight from Oxenhope'), false, 'desktop: the next phrase');
+  assert.equal(continues('roger', 'golf india alpha'), false, 'a one-word phrase is held to exactly');
+  assert.equal(spoken('golf charlie zulu india alpha', 'microlight'), 'golf charlie zulu india alpha microlight');
+  assert.equal(spoken('light oxenhope', 'light oxenhope ilkley'), 'light oxenhope ilkley');
+});
+
+test('the click comes when the recogniser is listening, so you know when to speak', async () => {
+  let listening = 0;
+  const { ptt } = make({ exclusive: true, onListening: () => listening++ });
+  await ptt.init();
+  ptt.down();
+  await sleep(60);
+  assert.equal(listening, 0, 'not yet: Android is still handing the microphone over');
+  await sleep(200);
+  assert.equal(listening, 1);
+  await ptt.up();
+  ptt.destroy();
 });
