@@ -10,7 +10,7 @@ export const PHONETIC = {
   pappa: 'p', poppa: 'p', quebec: 'q', romeo: 'r', sierra: 's', tango: 't', uniform: 'u',
   victor: 'v', whiskey: 'w', whisky: 'w', xray: 'x', yankee: 'y', zulu: 'z',
   // and the spellings the recogniser comes back with
-  alpher: 'a', alfie: 'a', elfa: 'a', bravour: 'b', charley: 'c', deltar: 'd', ecco: 'e',
+  alpher: 'a', alfie: 'a', elfa: 'a', alta: 'a', bravour: 'b', charley: 'c', deltar: 'd', ecco: 'e',
   hotell: 'h', indiya: 'i', juliette: 'j', keelo: 'k', leemah: 'l', maik: 'm', novemba: 'n',
   papaa: 'p', romio: 'r', cierra: 's', sierre: 's', tangoo: 't', unicorn: 'u', victa: 'v',
   whisker: 'w', yanky: 'y', zoolu: 'z',
@@ -32,7 +32,7 @@ export const HESITATION = /^(e+r+m*|u+h+|u+m+|a+h+|e+h+|h+m+|m+h+m*)$/i;
 // Multi-word and spelling variants folded before tokenising.
 const PHRASES = [
   [/\bx-ray\b/g, 'xray'],
-  [/\bq\.?\s?n\.?\s?h\.?\b/g, 'qnh'], [/\bq and h\b/g, 'qnh'],
+  [/\bq\.?\s?n\.?\s?h\.?\b/g, 'qnh'], [/\bq\s?(and|&)\s?h\b/g, 'qnh'],
   [/\bq\.?\s?f\.?\s?e\.?\b/g, 'qfe'],
   [/\bv\.?\s?f\.?\s?r\.?\b/g, 'vfr'],
   [/\bwill co\b/g, 'wilco'], [/\bwilko\b/g, 'wilco'], [/\bwill come\b/g, 'wilco'],
@@ -52,7 +52,9 @@ const PHRASES = [
   [/\bs[qkc][uw]?[ao]?[wr]?c?ks?\b/g, 'squawk'],
   [/\b(escort|squat|squaw|squeak|squad|stork|swat|s quark|squawked|squawking)\b/g, 'squawk'],
   [/\b(remain|remaining) outside a controlled\b/g, '$1 outside controlled'],
-  [/\bwill co\b/g, 'wilco'], [/\broutine\b(?= (own )?navigation)/g, 'resume'],
+  [/\bthe f\.?\s?r\.?\b/g, 'vfr'],                    // "VFR" comes back as "the FR"
+  [/\bmicro ?lights?\b/g, 'microlight'],
+  [/\bwill co\b/g, 'wilco'], [/\broutine\b(?= (own )?navigation)/g, 'resume'], [/\broutine\b/g, 'routing'],
   [/\bcontrol zone\b/g, 'control zone'],
 ];
 

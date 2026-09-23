@@ -37,12 +37,12 @@ const VRP_RT = {
 
 // [name, lat, lon, kind, extra things speech recognition may hear, pronunciation]
 const LANDMARKS = [
-  ['Skipton', 53.9614, -2.0168, 'town'], ['Keighley', 53.8679, -1.9066, 'town', ['keithley', 'keithly', 'keighly', 'keeley', 'keely'], 'Keethly'],
+  ['Skipton', 53.9614, -2.0168, 'town'], ['Keighley', 53.8679, -1.9066, 'town', ['keithley', 'keithly', 'keighly', 'keeley', 'keely', 'keith lee', 'keith ley'], 'Keethly'],
   ['Riddlesden', 53.8777, -1.8811, 'village', ['riddles den', 'ridlesden', 'riddlesdon']], ['Silsden', 53.9144, -1.938, 'town', ['sils den', 'silsdon']],
   ['Steeton', 53.8833, -1.95, 'village', ['steton']], ['Bingley', 53.8486, -1.8386, 'town', ['bingly']],
   ['Shipley', 53.8333, -1.7667, 'town'], ['Haworth', 53.8291, -1.9483, 'village', ['hayworth', 'howarth'], 'Howerth'],
-  ['Oxenhope', 53.8123, -1.952, 'village', ['oxen hope'], 'Oxen-hope'], ['Denholme', 53.8019, -1.895, 'village', ['denholm']],
-  ['Queensbury', 53.7666, -1.8491, 'village', ['queensberry']], ['Addingham', 53.9445, -1.8842, 'village', ['adding ham']],
+  ['Oxenhope', 53.8123, -1.952, 'village', ['oxen hope', 'auction hope', 'ox and hope'], 'Oxen-hope'], ['Denholme', 53.8019, -1.895, 'village', ['denholm']],
+  ['Queensbury', 53.7666, -1.8491, 'village', ['queensberry']], ['Addingham', 53.9445, -1.8842, 'village', ['adding ham', 'adding them']],
   ['Ilkley', 53.9245, -1.8233, 'town', ['ilkly', 'ilk lee']], ['Burley in Wharfedale', 53.9102, -1.758, 'village', ['burley', 'burly', 'burleigh']],
   ['Menston', 53.8904, -1.7439, 'village', ['menstone']], ['Otley', 53.9055, -1.6938, 'town', ['ottley', 'oatley']],
   ['Pool in Wharfedale', 53.9, -1.6167, 'village', ['pool']], ['Bolton Abbey', 53.9815, -1.8917, 'village'],

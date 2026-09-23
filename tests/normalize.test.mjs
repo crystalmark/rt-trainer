@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalize, findCallsign, tokens, speakable } from '../js/normalize.js';
-import { match } from '../js/matcher.js';
+import { match, hasAny } from '../js/matcher.js';
+import { AREAS } from '../js/areas/index.js';
 
 test('numbers in all the ways speech recognition returns them', () => {
   assert.equal(normalize('QNH one zero one seven'), 'qnh 1017');
@@ -67,4 +68,26 @@ test('hesitation is ignored, however it is spelled', () => {
   assert.equal(normalize('uhh basic service ah remaining outside controlled airspace'), 'basic service remaining outside controlled airspace');
   assert.equal(normalize('errr golf hotel papa'), 'g h p');
   assert.equal(normalize('eight hundred feet'), '800 feet', 'real words are left alone');
+});
+
+// A real "pass your message" reply off the Pixel, word for word. Nothing here was mumbled: this is what
+// Chrome makes of a details call spoken slowly and clearly, and every item of it has to still be found.
+test('a whole details call, as the Pixel heard it', () => {
+  const said = 'golf Charlie Zulu India Alta micro light from Oxenhope 1,700 feet 1 0 2 1 q&h routine ' +
+    'Oxenhope Keith Lee Ilkley adding them Skipton auction hope request airspace Transit ' +
+    'Keith Lee Ilkley adding them the FR mode sierra golf Charlie Zulu alpha';
+  const t = normalize(said);
+  assert.equal(findCallsign(tokens(said), 'G-CZIA').form, 'full');
+  assert.match(t, /^g c z i a microlight from oxenhope 1700 feet 1021 qnh routing /);
+  for (const w of ['vfr', 'transit']) assert.ok(t.includes(w), w);
+  assert.ok(!/\broutine\b/.test(t));
+  // ...and the places along the route, by whatever name Chrome gave them
+  const leeds = AREAS.find(a => a.id === 'leeds');
+  for (const n of ['Oxenhope', 'Keighley', 'Ilkley', 'Addingham', 'Skipton'])
+    assert.ok(hasAny(said, leeds.places.find(x => x.name === n).hear), n);
+});
+
+test('“resume own navigation” still beats “routing”', () => {
+  assert.equal(normalize('routine own navigation to Eccup'), 'resume own navigation to eccup');
+  assert.equal(normalize('routine north of the zone'), 'routing north of the zone');
 });
