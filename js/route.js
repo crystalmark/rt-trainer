@@ -130,7 +130,7 @@ export function planRoute(area, places, altitude, { midFlight = false } = {}) {
     plan.closest = best;
   }
   if (area.airport && points.some((_, i) => i && segmentPasses(points[i - 1].place, points[i].place, { x: 0, y: 0 }, 1))) {
-    warnings.push(`The route passes within a mile of ${area.airport.name}: expect ATC to route you round the runway.`);
+    warnings.push(`The route passes within a mile of ${area.airport.name}: expect ATC to route you round the runway, or via the overhead.`);
   }
   if (plan.cas.length > 1) warnings.push('The route leaves and re-enters controlled airspace: you will be cleared through it in one go.');
   // Class A takes IFR only: there is no VFR transit to ask for, so offering one would teach the wrong lesson.
