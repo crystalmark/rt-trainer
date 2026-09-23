@@ -478,3 +478,19 @@ test('reporting leaving the zone as you cross it is taken, not "say again"', asy
   assert.equal(events.find(e => e.type === 'call' && e.id === 'leaving')?.text, 'golf India alpha leaving controlled airspace');
   assertClean(events, 'early leaving report');
 });
+
+test('you cannot fly into the zone before you have called, let alone been cleared', async () => {
+  const scenario = scenarioFor(ROUTES[0], 3);
+  const T = scenario.plan.transit;
+  let furthest = 0;
+  const events = await flyWith(scenario, engine => {
+    const perfect = perfectPilot(engine);
+    return ev => {
+      if (ev.kind === 'nav') furthest = Math.max(furthest, ev.s);
+      if (ev.kind === 'awaiting' && ev.id === 'initial') { setTimeout(() => engine.stop(), 400); return; }   // never call
+      perfect(ev);
+    };
+  });
+  assert.ok(furthest < T.sIn, `flew ${furthest.toFixed(2)} nm, the zone starts at ${T.sIn.toFixed(2)}`);
+  assert.ok(events.at(-1).type === 'end');
+});

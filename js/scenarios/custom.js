@@ -149,6 +149,9 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
   // From the start of a plan, before you've called anyone.
   async function begin(s, P0) {
     const T = P0.transit;
+    // Not in without a clearance, whether or not you have called yet: leave it late and you orbit at the edge,
+    // as you would have to in the air. It used to hold only after the first call, so a late one flew straight in.
+    if (T) s.hold(Math.max(s.position().s, T.sIn - 1), 'Holding outside: no clearance yet');
     await s.reach(T ? Math.max(0.5, T.sIn - 10) : Math.min(1.5, P0.total / 4), { label: `${area.unit} ${area.freq}`,
       cue: T ? `Listen to the frequency, then call ${area.unit} when there is a gap.` : `Call ${area.unit} for a Basic Service.` });
     const { ctx } = s, here = whereIs(area, s.position()), via = T && T.via && T.via.place;
