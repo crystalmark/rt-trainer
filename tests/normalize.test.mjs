@@ -199,3 +199,36 @@ test('the log is capped and survives storage being off', () => {
   assert.doesNotThrow(() => append(dead, [row(1)]));
   assert.doesNotThrow(() => clear(dead));
 });
+
+// An off-script readback off the Pixel. "Score" for squawk is the fourth real English word the recogniser has
+// produced for it, so it only folds where a code follows; 2677 is the Leeds listening squawk.
+test('an off-script clearance readback, as the Pixel heard it', () => {
+  assert.equal(normalize('score 2677 clear to Transit maintaining 1,700 willco report leaving northwest golf India outer'),
+    'squawk 2677 cleared to transit maintaining 1700 wilco report leaving north west g i outer');
+  assert.equal(normalize('scored a goal'), 'scored a goal', 'no code after it, so it is left alone');
+  assert.equal(normalize('clear of the zone'), 'clear of the zone', '"clear of" is not a clearance');
+});
+
+// Off script there is no spec to mark against, but the words are still what the recogniser produced — and a
+// whole flight of them used to log as zero transmissions.
+test('the log records off-script and unrecognised transmissions too', () => {
+  const events = [
+    { type: 'readback', t: 40, text: 'squawk 5626 remain outside controlled airspace G-IA', result: { score: 100, missing: [], substitutions: [] } },
+    { type: 'offscript', t: 60, text: 'request a diversion' },
+    { type: 'free-assessment', t: 62, text: 'score 2677 clear to Transit maintaining 1,700 willco' },
+    { type: 'unexpected', t: 80, text: 'golf India alpha' },
+    { type: 'blocked', t: 85, text: 'talking over someone' },
+    { type: 'empty-tx', t: 95 },
+    { type: 'atc', t: 96, text: 'not one of mine' },
+  ];
+  const rows = rowsFrom(events, { scenario: 'custom-leeds', reg: 'G-CZIA', at: 1 });
+  assert.deepEqual(rows.map(r => r.kind), ['readback', 'free-assessment', 'unexpected', 'blocked', 'empty-tx']);
+  assert.deepEqual(rows.map(r => r.judged), [true, false, false, false, false]);
+
+  const s = stats(rows);
+  assert.equal(s.transmissions, 5);
+  assert.equal(s.judged, 1);
+  assert.equal(s.unjudged, 4);
+  assert.equal(s.heardNothing, 1, 'the recogniser returned no words once');
+  assert.equal(s.failRate, 0, 'the rate is over what was marked, not over everything');
+});

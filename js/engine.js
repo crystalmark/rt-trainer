@@ -672,7 +672,7 @@ export class Engine {
         await this.transmit('atc', '{CALL}, say again', { toPilot: true });
         continue;
       }
-      this.log('free-assessment', { text: tx.text, assessment: resp.assessment || null });
+      this.log('free-assessment', { text: tx.text, alts: tx.alternatives || null, assessment: resp.assessment || null });
       for (const t of resp.transmissions || []) {
         await this.withChannel(async () => { await this.transmit('atc', t, { toPilot: true, claude: true }); });
         this.freeHistory.push({ role: 'atc', text: t });

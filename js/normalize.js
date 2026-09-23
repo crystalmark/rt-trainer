@@ -36,7 +36,7 @@ const PHRASES = [
   [/\bq\.?\s?n\.?\s?h\.?\b/g, 'qnh'], [/\bq\s?(and|&)\s?h\b/g, 'qnh'],
   [/\bq\.?\s?f\.?\s?e\.?\b/g, 'qfe'],
   [/\bv\.?\s?f\.?\s?r\.?\b/g, 'vfr'],
-  [/\bwill co\b/g, 'wilco'], [/\bwilko\b/g, 'wilco'], [/\bwill come\b/g, 'wilco'],
+  [/\bwill co\b/g, 'wilco'], [/\bwil?lco\b/g, 'wilco'], [/\bwilko\b/g, 'wilco'], [/\bwill come\b/g, 'wilco'],
   [/\baffirmative\b/g, 'affirm'],
   [/\bhecto ?pascals?\b/g, 'hectopascals'], [/\bhpa\b/g, 'hectopascals'],
   [/\bft\b/g, 'feet'], [/\bfoot\b/g, 'feet'],
@@ -52,14 +52,14 @@ const PHRASES = [
   // real words, which no pattern should be catching by accident.
   [/\bs[qkc][uw]?[ao]?[wr]?c?ks?\b/g, 'squawk'],
   [/\b(escort|squat|squaw|squeak|squad|stork|swat|s quark|squawked|squawking)\b/g, 'squawk'],
-  [/\b(cork|corks|corked|quark|quarks)\b(?=\s+\d)/g, 'squawk'],   // real words: only when a code follows
+  [/\b(cork|corks|corked|quark|quarks|score|scores|scored)\b(?=\s+\d)/g, 'squawk'],   // real words: only with a code after
   [/\b(remain|remaining) outside a controlled\b/g, '$1 outside controlled'],
   // "Controlled airspace" is the phrase that has to be read back exactly, and the recogniser keeps shaving it:
   // "control airspace", "controls air space". It never touches "control zone", which is a different place.
   [/\bair space\b/g, 'airspace'],
   [/\bcontrols? airspace\b/g, 'controlled airspace'],
   [/\bthe [dvb]?f\.?\s?r\.?\b/g, 'vfr'],                // "VFR" comes back as "the FR", "the DFR"
-  [/\bclear to enter\b/g, 'cleared to enter'],           // the -ed goes missing, as it does on "controlled"
+  [/\bclear to (enter|transit|cross|land|leave)\b/g, 'cleared to $1'],   // the -ed goes missing, as on "controlled"
   [/\bmicro ?lights?\b/g, 'microlight'],
   [/\bwill co\b/g, 'wilco'], [/\broutine\b(?= (own )?navigation)/g, 'resume'], [/\broutine\b/g, 'routing'],
 ];

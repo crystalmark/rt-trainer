@@ -9,22 +9,31 @@ import { tokens } from './normalize.js';
 export const KEY = 'rt.heard';
 const CAP = 400;
 
+// Every way a transmission of yours reaches the log. Only the first two are marked against a spec; the rest
+// are still words the recogniser produced, and an off-script flight consists of nothing else — which is how
+// this log managed to record a whole flight as zero transmissions.
+const JUDGED = ['call', 'readback'];
+const UNJUDGED = ['free-assessment', 'unexpected', 'stepped-in', 'wrong-callsign', 'blocked'];
+
 /** One row per transmission from an engine event log. Pure: storage and the DOM are somebody else's problem. */
 export function rowsFrom(events, { scenario = '', reg = '', at = Date.now() } = {}) {
-  return events.filter(e => e.type === 'call' || e.type === 'readback').map(e => {
+  const kinds = [...JUDGED, ...UNJUDGED, 'empty-tx'];
+  return events.filter(e => kinds.includes(e.type)).map(e => {
     const r = e.result || {};
     const text = e.text || '';
     const norm = tokens(text).join(' ');
     const row = {
       at, scenario, reg, kind: e.type, id: e.id || null, t: e.t,
-      raw: e.heard || text,                            // what the recogniser offered first
+      judged: JUDGED.includes(e.type),
+      heardNothing: e.type === 'empty-tx',              // the recogniser returned no words at all
+      raw: e.heard || text,                             // what it offered first
       norm,
       folded: norm !== tokens(text, { folds: false }).join(' '),
       score: r.score ?? null,
       missing: r.missing || [],
       subs: (r.substitutions || []).map(s => s.said).filter(Boolean),
     };
-    if (e.heard) row.used = text;                      // a later guess matched better than the first
+    if (e.heard) row.used = text;                       // a later guess matched better than the first
     if (e.alts && e.alts.length > 1) row.alts = e.alts;
     return row;
   });
@@ -32,17 +41,20 @@ export function rowsFrom(events, { scenario = '', reg = '', at = Date.now() } = 
 
 /** The numbers that decide whether to keep patching or go and buy a recogniser with a vocabulary. */
 export function stats(rows) {
-  const n = rows.length;
-  const failed = rows.filter(r => r.missing.length).length;
+  const judged = rows.filter(r => r.judged);
+  const failed = judged.filter(r => r.missing.length).length;
   return {
-    transmissions: n,
+    transmissions: rows.length,
+    judged: judged.length,                                         // marked against what ATC expected
+    unjudged: rows.length - judged.length,                         // off script, blocked, unexpected: no spec
+    heardNothing: rows.filter(r => r.heardNothing).length,         // the recogniser returned no words at all
     failed,                                                        // a hard item missing even after the folds
     folded: rows.filter(r => r.folded).length,                     // the table changed the words
-    rescued: rows.filter(r => r.folded && !r.missing.length).length,
+    rescued: judged.filter(r => r.folded && !r.missing.length).length,
     otherGuess: rows.filter(r => r.used).length,                   // best-of-five earned its keep
     substituted: rows.filter(r => r.subs.length).length,
     medianScore: median(rows.map(r => r.score).filter(v => v != null)),
-    failRate: n ? Math.round(100 * failed / n) : null,
+    failRate: judged.length ? Math.round(100 * failed / judged.length) : null,
   };
 }
 

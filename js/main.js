@@ -589,12 +589,13 @@ function renderHeard(rows) {
     st('transmissions', h.transmissions),
     st('rescued by the mishearing table', h.rescued, h.rescued ? 'good' : ''),
     st('still failed', h.failed, h.failed ? 'bad' : 'good'),
+    st('nothing recognised', h.heardNothing, h.heardNothing ? 'bad' : ''),
     st('a later guess matched better', h.otherGuess),
   ].join('');
   const all = heardLoad(localStorage);
   const a = heardStats(all);
   $('d-heard-total').textContent = all.length
-    ? `${all.length} kept: ${a.rescued} rescued, ${a.failed} failed (${a.failRate}%), median ${a.medianScore}/100`
+    ? `${all.length} kept: ${a.judged} marked (${a.failed} failed, ${a.failRate}%), ${a.unjudged} off script, ${a.rescued} rescued`
     : 'Nothing kept yet.';
 }
 
