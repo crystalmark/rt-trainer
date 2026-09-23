@@ -1,12 +1,14 @@
 // Listen out: sit on a frequency and hear the traffic, with nothing expected of you. Good for getting the rhythm
 // and the phraseology of a unit into your ear before you fly it, or while you get on with something else.
-import { leedsTraffic, edinburghTraffic, scottishTraffic, carlisleTraffic } from './common.js';
+import { leedsTraffic, edinburghTraffic, manchesterTraffic, scottishTraffic, carlisleTraffic } from './common.js';
 
 export const LISTEN_UNITS = [
   { id: 'leeds', unit: 'Leeds Radar', freq: '134.580', traffic: leedsTraffic,
     about: 'Airliners being vectored onto the ILS, GA transits and the odd police helicopter.' },
   { id: 'edinburgh', unit: 'Edinburgh Approach', freq: '121.205', traffic: edinburghTraffic,
     about: 'Jets on approach, and zone transits across the Forth.' },
+  { id: 'manchester', unit: 'Manchester Radar', freq: '118.580', traffic: manchesterTraffic,
+    about: 'One of the busiest frequencies in the country: airliners onto 23 Right, and GA squeezing round the edges.' },
   { id: 'carlisle', unit: 'Carlisle Radio', freq: '123.605', traffic: carlisleTraffic,
     about: 'Air/Ground: circuit calls and taxi calls, information rather than instructions.' },
   { id: 'scottish', unit: 'Scottish Information', freq: '119.875', traffic: scottishTraffic,

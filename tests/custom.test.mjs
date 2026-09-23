@@ -4,16 +4,18 @@ import { Engine } from '../js/engine.js';
 import { PROFILES } from '../js/config.js';
 import { AREAS } from '../js/areas/index.js';
 import { parseRoute, planRoute } from '../js/route.js';
+import { inside } from '../js/geo.js';
 import { customScenario } from '../js/scenarios/custom.js';
 import { fakeClock, fakeRadio, seeded, perfectPilot, sendWhenClear } from './helpers.mjs';
 
 const leeds = AREAS.find(a => a.id === 'leeds');
 
-function scenarioFor(text, seed = 1) {
-  const r = parseRoute(text, leeds);
+function scenarioIn(area, text, seed = 1) {
+  const r = parseRoute(text, area);
   assert.deepEqual(r.unknown, [], text);
-  return customScenario(leeds, { points: r.points, altitude: r.altitude }, { rng: seeded(seed * 97) });
+  return customScenario(area, { points: r.points, altitude: r.altitude }, { rng: seeded(seed * 97) });
 }
+function scenarioFor(text, seed = 1) { return scenarioIn(leeds, text, seed); }
 
 function fly(scenario, profile, seed, { settings = {}, pilot = perfectPilot, watch = () => {} } = {}) {
   const clock = fakeClock(4000);
@@ -281,4 +283,68 @@ test('“zone” is used only when the control zone is what you are crossing', a
   const m = await model(cta);
   assert.match(m, /request Basic Service and transit through your controlled airspace/);
   assert.ok(!/\bzone\b/i.test(m), m);
+});
+
+// Edinburgh and Manchester, from the same AIP transcription the app plans with. Between them these cover a CTR
+// transit, a CTA-only transit, and flights that stay outside — including the Manchester transit corridor, which
+// is Class G now and needs no clearance at all.
+const MORE = {
+  edinburgh: [
+    'Dunbar to Falkirk via Musselburgh and Forth Road Bridge at 2000 ft',
+    'Dunbar to Kinross via Musselburgh and Kirkcaldy Harbour at 2000 ft',
+    'Peebles to Dunbar via West Linton at 2400 ft',
+    'Dunbar to Peebles via Dalkeith at 3000 ft',
+  ],
+  manchester: [
+    'Buxton to Northwich via Macclesfield and Alderley Edge at 1400 ft',
+    'Chorley to Buxton via Sale Water Park and Stockport at 2000 ft',
+    'Chester to Buxton via Winsford Flash and Jodrell Bank at 2400 ft',
+    'Warrington to Winsford Flash via Northwich at 1400 ft',
+  ],
+};
+
+for (const [id, routes] of Object.entries(MORE)) {
+  const area = AREAS.find(a => a.id === id);
+  for (const text of routes) {
+    test(`${id} "${text}": perfect pilot, both aircraft, no corrections`, async () => {
+      for (const profile of PROFILES) {
+        for (const seed of [1, 2]) assertClean(await fly(scenarioIn(area, text, seed), profile, seed), `${profile.reg} seed ${seed}`);
+      }
+    });
+  }
+}
+
+// The single most important thing about Manchester now: the old Low Level Route is gone, and what replaced it
+// is Class G to 1500 ft. Below that the corridor must plan as an ordinary flight with nothing to ask for; above
+// it, CTA 6 is Class D and you cannot simply set off inside it.
+test('the Manchester transit corridor needs no clearance below 1500 ft', () => {
+  const area = AREAS.find(a => a.id === 'manchester');
+  const plan = alt => {
+    const r = parseRoute(`Warrington to Winsford Flash via Northwich at ${alt} ft`, area);
+    assert.deepEqual(r.unknown, []);
+    return planRoute(area, r.points, r.altitude);
+  };
+  const low = plan(1400);
+  assert.deepEqual(low.errors, []);
+  assert.equal(low.transit, null, 'nothing to ask for below 1500 ft');
+  assert.ok(!area.airspace.some(v => v.name.includes('EGR323') || /corridor/i.test(v.name)), 'Class G is not controlled airspace');
+  assert.match(plan(2400).errors[0] || '', /CTA 6 \(base 1500 ft\)/);
+  // ...and Class A above the lot is refused outright rather than offered as a transit
+  const r = parseRoute('Chorley to Buxton via Sale Water Park at 4000 ft', area);
+  const high = planRoute(area, r.points, r.altitude);
+  assert.ok(high.errors.some(e => /Class A/.test(e) && /no transit/.test(e)), high.errors.join(' | '));
+});
+
+// The Edinburgh CTR is the first airspace in the app published as a plain circle rather than a vertex list.
+test('the Edinburgh CTR is a 10 nm circle, and the CTAs tile the ring outside it', () => {
+  const area = AREAS.find(a => a.id === 'edinburgh');
+  const ctr = area.airspace.find(v => v.kind === 'CTR');
+  const out = area.grid.xy({ lat: area.origin.lat + 10.5 / 60, lon: area.origin.lon });
+  const inn = area.grid.xy({ lat: area.origin.lat + 9.5 / 60, lon: area.origin.lon });
+  assert.ok(inside(inn, ctr.poly) && !inside(out, ctr.poly), '9.5 nm in, 10.5 nm out');
+  assert.equal(ctr.top, 6000, 'surface to 6000 ft, not the usual 8500');
+  for (const name of ['Musselburgh', 'Kirkcaldy Harbour', 'Cobbinshaw Reservoir', 'West Linton', 'Longannet']) {
+    const p = area.places.find(x => x.name === name);
+    assert.ok(area.airspace.some(v => inside(p, v.poly)), `${name} should be in the CTR or a CTA`);
+  }
 });

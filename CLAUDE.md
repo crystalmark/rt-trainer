@@ -50,7 +50,8 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   included), VRPs (`js/data/vrps.js`, generated from the NATS dataset) with radio names and `hear` variants for
   speech recognition, and landmarks. `js/geo.js` puts it all on a flat nm grid; `js/route.js` parses a described
   route and plans it (entry/exit at the altitude, the "via" point, reports, CTAs close overhead);
-  `js/scenarios/custom.js` turns the plan into a transit or a Basic Service flight. The engine flies it with
+  `js/scenarios/custom.js` turns the plan into a transit or a Basic Service flight. Areas so far: Leeds
+  Bradford, Edinburgh (whose CTR is a plain circle — `circle()` in geo.js) and Manchester. The engine flies it with
   `s.fly(plan)`, `s.reach(nm)`, `s.hold(nm)`, `s.position()`: continuous movement (real time while anyone is
   talking), `nav` events once a second and `route` events for the flight screen.
 - `js/map.js`: the moving map, SVG drawn from the area data (symbols sized in pixels; track-up/north-up, drag, tap to
@@ -68,7 +69,13 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   live only in the NATS VRP dataset, not in AD 2: regenerate `js/data/vrps.js` each AIRAC cycle with
   `node scripts/vrps.mjs <csv>`, and never call a landmark a VRP.
 - A new area needs its AIP airspace, radio names for its VRPs, landmarks, and its perfect-pilot routes in
-  `tests/custom.test.mjs`.
+  `tests/custom.test.mjs`. `scripts/places.mjs` finds landmark positions (GeoNames, falling back to
+  OpenStreetMap for hills, reservoirs and the like); always check the county it prints.
+- Only put controlled airspace in an area's `airspace`. Class G that looks like a corridor on the chart is not
+  controlled airspace and must stay out of it, or the app will invent a clearance for it. Class A goes in, and
+  the planner refuses to route through it rather than offering a VFR transit nobody could be given.
+- Check the AIP rather than trusting a chart or a memory of one: the Manchester Low Level Route was withdrawn on
+  20 February 2025 and this file still described it eighteen months later.
 - Keep the engine DOM-free so it stays testable in Node.
 - crystalmark.co.uk is one browser origin shared with Flight Log and Pollyglot: service-worker caches are named and
   cleared by the `rt-trainer-` prefix, localStorage keys start `rt.`. New JS files go in `FILES` in `sw.js` (tested).
@@ -84,8 +91,8 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
 ## Ideas / backlog
 - More things to do rather than say: set the altitude you were cleared to, turn onto a heading.
 - Listen out covers the four scripted units; add each new area's unit as it arrives.
-- More areas for your own route: Manchester (EGCC VRPs are already in `js/data/vrps.js`; the Low Level Route),
-  Edinburgh (EGPH), York (Leeds East EGCM VRPs; Humberside, Linton/Leeming).
+- More areas for your own route: York (Leeds East EGCM VRPs are already in `js/data/vrps.js`; Humberside,
+  Linton/Leeming), Liverpool (its CTR abuts Manchester's transit corridor).
 - Change altitude in flight, and have ATC react if you climb into a CTA without a clearance.
 - Import a SkyDemon route (need a sample export to see the format); unknown place names via the geocoder.
 - Routes over the airport: have ATC route you round it rather than just warning in the briefing.

@@ -2,6 +2,8 @@
 // them on the area's flat grid once.
 import { grid, boundary } from '../geo.js';
 import leeds from './leeds.js';
+import edinburgh from './edinburgh.js';
+import manchester from './manchester.js';
 
 function prepare(area) {
   const g = grid(area.origin);
@@ -15,5 +17,5 @@ function prepare(area) {
   };
 }
 
-export const AREAS = [leeds].map(prepare);
+export const AREAS = [leeds, edinburgh, manchester].map(prepare);
 export const areaById = id => AREAS.find(a => a.id === id);

@@ -37,9 +37,20 @@ export const compass = deg => POINTS[Math.round((((deg % 360) + 360) % 360) / 45
  * Polygon from AIP-style boundary parts: grid points, or arcs { arc: 'cw' | 'ccw', radius, centre, to }
  * running from the previous point to `to`. Arcs are drawn every 3 degrees.
  */
+/** Airspace the AIP publishes as "a circle, 10 NM radius, centred at ...", with no vertex list at all. */
+export const circle = (centre, radius) => [{ circle: true, centre, radius }];
+
 export function boundary(parts, g) {
   const out = [];
   for (const part of parts) {
+    if (part.circle) {
+      const c = g.xy(part.centre);
+      for (let i = 0; i < 120; i++) {
+        const a = 2 * Math.PI * i / 120;
+        out.push({ x: c.x + part.radius * Math.sin(a), y: c.y + part.radius * Math.cos(a) });
+      }
+      continue;
+    }
     if (!part.arc) { out.push(g.xy(part)); continue; }
     const c = g.xy(part.centre), from = out[out.length - 1], to = g.xy(part.to);
     const a0 = Math.atan2(from.x - c.x, from.y - c.y);

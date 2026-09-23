@@ -18,11 +18,13 @@ Built for G-CLHP (flexwing, no transponder) and G-CZIA (QuikR, Mode S/C); both e
 | Carlisle departure | Carlisle Radio 123.605 | Radio check, taxi and line-up announcements, leaving the ATZ. |
 | Scottish Information | 119.875 | Carlisle → East Fortune, ~75 nm. A long listening watch with position reports: the "get on with something else and listen for your callsign" mode. |
 | Leeds: your own route | Leeds Radar 134.580 | Any route you describe. See below. |
+| Edinburgh: your own route | Edinburgh Approach 121.205 | The same, around the Edinburgh CTR: a 10 nm circle, surface to 6000 ft, with the CTAs tiling the ring outside it. |
+| Manchester: your own route | Manchester Radar 118.580 | The same, around one of the biggest Class D zones in the country, with the North West Transit Corridor down its western side. |
 | Listen out | Any of the above units | No calls to make: sit on the frequency and listen to the traffic. |
 
-## Your own route (Leeds so far)
+## Your own route (Leeds, Edinburgh, Manchester)
 
-Pick **Leeds: your own route** and describe the flight, e.g. “Skipton to Wetherby via Salts Mill and Eccup
+Pick an area's **your own route** card and describe the flight, e.g. “Skipton to Wetherby via Salts Mill and Eccup
 Reservoir at 2800 ft” (or arrows, or commas). The app lays it over the Leeds airspace at your altitude and tells
 you what ATC will make of it: where you enter and leave controlled airspace, the point you'll be cleared via, the
 points you'll report, and anything you pass close underneath (“CTA 3, base 3000 ft: only 200 ft above you”). Typos
@@ -33,12 +35,25 @@ stays outside becomes a Basic Service flight with a warning if you pass close to
 along the route the whole time (in real time while anyone is talking), holds outside the zone until you're
 cleared, and the flight screen shows your altitude, QNH, the next waypoint and the time to it.
 
-Routes must start and finish outside controlled airspace, at least 4 nm before it, below the 5000 ft transition
-altitude. Leeds Bradford itself isn't a destination yet.
+Routes must start and finish outside controlled airspace, at least 4 nm before it, below the transition altitude
+(5000 ft, or 6000 ft at Edinburgh). The airport itself isn't a destination yet.
+
+Each area is transcribed point for point from the UK AIP, and the differences between them are the point:
+
+- **Edinburgh** publishes its CTR as a plain circle, 10 nm around the airport, surface to 6000 ft, with CTA bases
+  of 2500 ft north-east and west and 3500 ft north-west and south. Every CTA arc runs anti-clockwise, because
+  they tile the ring outside that circle.
+- **Manchester** has no arcs at all, a CTR that reaches from Glossop to Knutsford, and CTA bases stepping down
+  through 3000, 2500, 2000 and 1500 ft. Above it all sits the TMA, **Class A** — the app refuses to plan through
+  that rather than offering you a VFR transit nobody could give you.
+- The **Manchester Low Level Route no longer exists**: it was withdrawn on 20 February 2025 and replaced by the
+  North West Transit Corridor (EGR323), which is **Class G** from the surface to 1500 ft. So a route down the
+  corridor below 1500 ft plans as an ordinary flight outside controlled airspace — no clearance, nobody to call —
+  which is exactly what it now is. At 2400 ft the same route is refused: that's CTA 6, Class D.
 
 ### The map
 The briefing shows your route on a map drawn from the same data (no map tiles, so it works offline): the zone and
-CTAs with their bases, VRPs (purple triangles), landmarks, Leeds Bradford's runway and ATZ, and your route in magenta.
+CTAs with their bases, VRPs (purple triangles), landmarks, the airport's runways and ATZ, and your route in magenta.
 In flight it becomes a moving map with the track you've flown: track-up (TRK) or north-up (N), zoom, drag to look
 around (⌖ brings you back). **Log** swaps it for the radio log.
 

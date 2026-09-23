@@ -133,6 +133,10 @@ export function planRoute(area, places, altitude, { midFlight = false } = {}) {
     warnings.push(`The route passes within a mile of ${area.airport.name}: expect ATC to route you round the runway.`);
   }
   if (plan.cas.length > 1) warnings.push('The route leaves and re-enters controlled airspace: you will be cleared through it in one go.');
+  // Class A takes IFR only: there is no VFR transit to ask for, so offering one would teach the wrong lesson.
+  const classA = plan.cas.find(c => c.volume.cls === 'A');
+  if (classA) errors.push(`${classA.volume.name} is Class A: VFR is not allowed in it at all, so there is no transit to ask for. ` +
+    `Plan below its base of ${classA.volume.base} ft.`);
   if (plan.cas.length && !errors.length) plan.transit = transitOf(plan);
   return plan;
 }
