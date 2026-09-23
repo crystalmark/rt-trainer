@@ -22,7 +22,8 @@ export const LETTER_TO_WORD = {
   x: 'X-ray', y: 'Yankee', z: 'Zulu',
 };
 
-const DIGITS = { zero: 0, one: 1, two: 2, three: 3, tree: 3, four: 4, fower: 4, five: 5, fife: 5,
+// "oh" is not CAP 413 — it should be "zero" — but pilots say it, so hear it and let the matcher flag it.
+const DIGITS = { zero: 0, oh: 0, one: 1, two: 2, three: 3, tree: 3, four: 4, fower: 4, five: 5, fife: 5,
   six: 6, seven: 7, eight: 8, nine: 9, niner: 9 };
 const TEENS = { ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
   sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 };
@@ -57,7 +58,8 @@ const PHRASES = [
   // "control airspace", "controls air space". It never touches "control zone", which is a different place.
   [/\bair space\b/g, 'airspace'],
   [/\bcontrols? airspace\b/g, 'controlled airspace'],
-  [/\bthe f\.?\s?r\.?\b/g, 'vfr'],                    // "VFR" comes back as "the FR"
+  [/\bthe [dvb]?f\.?\s?r\.?\b/g, 'vfr'],                // "VFR" comes back as "the FR", "the DFR"
+  [/\bclear to enter\b/g, 'cleared to enter'],           // the -ed goes missing, as it does on "controlled"
   [/\bmicro ?lights?\b/g, 'microlight'],
   [/\bwill co\b/g, 'wilco'], [/\broutine\b(?= (own )?navigation)/g, 'resume'], [/\broutine\b/g, 'routing'],
 ];

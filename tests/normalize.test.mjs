@@ -134,3 +134,23 @@ test('and the whole readback then passes clean', () => {
   assert.deepEqual(r.substitutions.map(i => i.substituted), []);
   assert.equal(r.score, 100);
 });
+
+// A clearance readback, as the Pixel heard it. Only the pressure is beyond saving: a mangled number is the one
+// thing that must not be papered over, because reading back the wrong QNH is the error the check exists for.
+test('a clearance readback: the acronyms recovered, the number left alone', () => {
+  const said = 'clear to enter the Leeds controlled zone q&h 10005 the dfr not above 2,000 feet Wilco golf India alpha';
+  assert.equal(normalize(said), 'cleared to enter the leeds controlled zone qnh 10005 vfr not above 2000 feet wilco g i a');
+
+  // Spelling the letters out is the thing a pilot can actually do about it: spaced letters fold back together,
+  // where the recogniser's guess at the acronym does not.
+  for (const t of ['q n h 1005', 'Q.N.H. one zero zero five', 'qnh one zero zero five']) assert.equal(normalize(t), 'qnh 1005', t);
+  for (const t of ['v f r', 'V.F.R.', 'the dfr', 'the fr']) assert.equal(normalize(t), 'vfr', t);
+
+  // "Oh" for zero is understood but is not CAP 413, so it is heard and then flagged rather than failed.
+  assert.equal(normalize('qnh ten oh five'), 'qnh 1005');
+  assert.equal(normalize('one zero one seven'), '1017');
+  assert.ok(match('qnh one zero zero five', [], {}).fillers.length === 0);
+  assert.match(match('qnh ten oh five', [], {}).fillers[0], /Every digit has its own word/);
+
+  assert.equal(normalize('clear of the zone'), 'clear of the zone', '"clear of" is not a clearance');
+});

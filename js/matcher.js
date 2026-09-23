@@ -13,6 +13,8 @@ export const FILLERS = [
   { re: /\bat my discretion\b/, why: 'Never reply “at my discretion”: state your intention, e.g. “landing”.' },
   { re: /\bover and out\b|\bover\b\s*$/, why: '“Over” / “over and out” are not used in UK VHF RT.' },
   { re: /\bten four\b/, why: 'Not RT phraseology.' },
+  { re: /\b(zero|one|two|three|four|five|six|seven|eight|nine|niner)\s+oh\b|\boh\s+(zero|one|two|three|four|five|six|seven|eight|nine|niner)\b/,
+    why: 'Every digit has its own word: “one zero zero five”, never “ten oh five”. It is also what speech recognition hears best.' },
   { re: /\bjoining instructions\b/, why: 'Only ATC gives instructions. Ask to join, or for airfield information.' },
   { re: /\bready for take ?off\b/, why: 'Say “ready for departure”; “take-off” is only used in the clearance.' },
 ];
