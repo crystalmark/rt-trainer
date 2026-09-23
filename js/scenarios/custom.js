@@ -15,8 +15,12 @@ const cap = t => t[0].toUpperCase() + t.slice(1);
 /** What you are asking to cross: the zone only when it really is the CTR. */
 const transitWords = T => (T.intoZone ? 'zone transit' : 'transit through your controlled airspace');
 const TRAFFIC = ['a Cessna 172', 'a PA28', 'a C42 microlight', 'a helicopter', 'a Robin', 'a glider'];
-const HEADINGS = ['northbound', 'southbound', 'eastbound', 'westbound'];
 const SIDES = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+// Traffic information as CAP 413 has it: position by clock code, distance, what it is doing relative to you,
+// what it is, and its level — or honestly that there is none. Spelled in words so the synthesiser says
+// "eleven o'clock" instead of reading out a number.
+const CLOCK = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+const CROSSING = ['crossing left to right', 'crossing right to left', 'opposite direction', 'same direction', 'manoeuvring'];
 
 /** Build a scenario for `points` (area places) at `altitude`. Throws with the plan's first error if it can't be flown. */
 export function customScenario(area, { points, altitude }, { rng = Math.random } = {}) {
@@ -97,8 +101,11 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
       done: () => !s.orbiting(), nudge: '{CALL}, confirm resuming own navigation', timeout: 15 });
   };
   const traffic = async s => {
-    const alt = Math.max(1000, altitude + s.pick([-500, -300, 300, 500, 0]));
-    await s.atc(`{CALL}, traffic is ${s.pick(TRAFFIC)}, ${s.pick(['1 mile', '2 miles', '3 miles'])} ${s.pick(SIDES)} of you, ${s.pick(HEADINGS)}, altitude ${alt} feet`, {
+    const level = s.chance(0.2) ? 'no height information'
+      : s.chance(0.3) ? 'similar level'
+      : `indicating ${s.pick([200, 300, 500])} feet ${s.pick(['above', 'below'])}`;
+    const what = s.chance(0.25) ? 'type unknown' : s.pick(TRAFFIC);
+    await s.atc(`{CALL}, traffic, ${s.pick(CLOCK)} o'clock, ${s.pick([1, 2, 3, 4, 5])} miles, ${s.pick(CROSSING)}, ${what}, ${level}`, {
       readback: [TRAFFIC_ACK()], model: 'Looking, {CALL}  … then: Traffic in sight, {CALL}' });
   };
   const qnhChange = async s => {
@@ -108,25 +115,30 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     s.setRadio({ qnh });
   };
 
-  // Leaving the frequency. After a transit the service drops back to Basic Service, so the controller says so.
-  async function qsy(s, summary, { basic = false } = {}) {
-    const x = s.ctx.transponder;
-    const words = [basic ? 'Basic Service' : '', x ? 'squawk 7000' : '', 'frequency change approved'].filter(Boolean).join(', ');
-    await s.atc(`{CALL}, ${words}`, {
-      readback: [...(basic ? [BASIC()] : []), ...(x ? [SQUAWK('7000')] : []), P('frequency change approved', ['frequency change', 'free call', 'freecall', 'changing'], { soft: !basic, fix: 'frequency change approved' })],
-      model: `${cap(words)}, {CALL}` });
-    await useSquawk(s, '7000', { chase: false });
-    s.end(summary);
+  // The last few miles. The service runs on until you ask to leave it: a controller does not approve a
+  // frequency change nobody asked for, and SAFETYCOM is only usable within 10 nm of where you are landing.
+  async function runHome(s, P0, summary) {
+    const end = Math.max(s.position().s + 0.3, P0.total - 5);
+    await s.reach(end, { label: `Towards ${destination(P0).name}` });
+    return leaveFrequency(s, summary);
   }
 
-  // Asked to report changing frequency (after a refusal): the pilot calls, the controller lets them go.
+  // The pilot asks to go and the controller lets them. If they never ask, nothing is approved: the service is
+  // terminated instead, which is what a controller does with an aircraft that has gone quiet on them.
   async function leaveFrequency(s, summary) {
-    await s.expect({ id: 'qsy', cue: 'Well clear of controlled airspace. Leave the frequency.', nudge: '{CALL}, say intentions',
-      items: [P('changing frequency', ['changing', 'frequency', 'leaving your frequency', 'request frequency change'])], model: '{CALL}, clear of your airspace, changing frequency' });
-    const x = s.ctx.transponder;
-    await s.atc(x ? '{CALL}, squawk 7000, frequency change approved' : '{CALL}, frequency change approved', {
-      readback: [...(x ? [SQUAWK('7000')] : []), P('frequency change approved', ['frequency change', 'changing'], { soft: true })],
-      model: (x ? 'Squawk 7000, ' : '') + 'frequency change approved, {CALL}' });
+    const x = s.ctx.transponder, to = destination(plan).name;
+    const asked = await s.expect({ id: 'qsy', cue: `Coming up on ${to}. Ask to leave the frequency.`,
+      nudge: '{CALL}, say intentions',
+      items: [P('changing frequency', ['changing', 'frequency', 'leaving your frequency', 'request frequency change', 'safetycom'])],
+      model: `{CALL}, ${miles(Math.max(1, plan.total - s.position().s))} from ${to}, request frequency change` });
+    if (!asked) {
+      await s.atc(x ? '{CALL}, Basic Service terminated, squawk 7000' : '{CALL}, Basic Service terminated');
+      s.note('The controller terminated the service rather than approving a frequency change: you never asked for one.');
+    } else {
+      await s.atc(x ? '{CALL}, squawk 7000, frequency change approved' : '{CALL}, frequency change approved', {
+        readback: [...(x ? [SQUAWK('7000')] : []), P('frequency change approved', ['frequency change', 'changing'], { soft: true })],
+        model: (x ? 'Squawk 7000, ' : '') + 'frequency change approved, {CALL}' });
+    }
     await useSquawk(s, '7000', { chase: false });
     s.end(summary);
   }
@@ -264,7 +276,9 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
       items: [P('leaving controlled airspace', ['leaving controlled airspace', 'leaving the zone', 'clear of controlled airspace', 'leaving', 'clear of the zone', 'clear'])],
       model: '{CALL}, leaving controlled airspace' });
     st.left = true;
-    await qsy(s, 'Transit completed', { basic: true });
+    await s.atc('{CALL}, roger, clear of controlled airspace, Basic Service, report changing frequency', {
+      readback: [BASIC(), WILCO()], model: 'Basic Service, wilco, {CALL}' });
+    return runHome(s, P0, 'Transit completed');
   }
 
   async function refusal(s) {
@@ -288,7 +302,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
   // Outside controlled airspace on a Basic Service: the odd report or traffic, then leave the frequency near the end.
   async function outside(s, P0) {
     const { ctx } = s;
-    const end = Math.max(s.position().s + 0.5, P0.total - 1.5);
+    const end = Math.max(s.position().s + 0.5, P0.total - 5);    // ask to leave the frequency with a few miles to run
     const at = () => s.position().s + (end - s.position().s) * s.pick([0.3, 0.5, 0.7]);
     const surprises = [];
     if (s.chance(0.6)) surprises.push({ at: at(), run: traffic });
@@ -316,9 +330,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
       await s.atc('{CALL}, roger');
     }
     await flyTo(s, end, `Towards ${destination(P0).name}`, surprises);
-    await s.expect({ id: 'qsy', cue: 'Nearly there. Leave the frequency.', nudge: '{CALL}, say intentions',
-      items: [P('leaving frequency', ['frequency', 'changing', 'leaving', 'basic service'])], model: '{CALL}, request frequency change' });
-    await qsy(s, st.refused ? 'Transit refused: routed round' : 'Basic Service flight completed');
+    await leaveFrequency(s, st.refused ? 'Transit refused: routed round' : 'Basic Service flight completed');
   }
 
   // ---------- a change of route in flight ----------

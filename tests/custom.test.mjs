@@ -97,7 +97,15 @@ test('your route: the clearance names your VRPs and the reports follow them', as
   assert.match(clearance, /identified (overhead [A-Z][\w ]+|\d+ miles? [a-z-]+ of [A-Z][\w ]+)\. Cleared to enter the Leeds control zone via Salts Mill, VFR, not above altitude 3000 feet, Leeds QNH \d{4}\. Route Salts Mill, Eccup Reservoir\. Report Salts Mill$/);
   assert.ok(atc.some(t => /radar control service, report Eccup Reservoir/.test(t)), atc.join('\n'));
   assert.ok(atc.some(t => /leave the zone east, not above altitude 3000 feet, report leaving controlled airspace/.test(t)));
-  assert.ok(atc.some(t => /Basic Service, squawk 7000, frequency change approved/.test(t)));
+  // Clear of their airspace the transit is over but the flight is not: the service runs on, and the pilot
+  // asks to leave it near the destination. Nothing is "approved" before they have asked for it.
+  const order = atc.map((t, i) => [i, t]);
+  const told = order.find(([, t]) => /clear of controlled airspace, Basic Service, report changing frequency/.test(t));
+  const approved = order.find(([, t]) => /squawk 7000, frequency change approved/.test(t));
+  assert.ok(told, atc.join('\n'));
+  assert.ok(approved && approved[0] > told[0], 'the approval comes after the pilot asks');
+  const askedAt = events.findIndex(e => e.type === 'call' && e.id === 'qsy');
+  assert.ok(askedAt > 0, 'the pilot asked for the frequency change');
   const calls = events.filter(e => e.type === 'call').map(e => e.id);
   assert.deepEqual(calls.filter(id => id.startsWith('report')), ['report-sml', 'report-ecp']);
 });
@@ -346,5 +354,33 @@ test('the Edinburgh CTR is a 10 nm circle, and the CTAs tile the ring outside it
   for (const name of ['Musselburgh', 'Kirkcaldy Harbour', 'Cobbinshaw Reservoir', 'West Linton', 'Longannet']) {
     const p = area.places.find(x => x.name === name);
     assert.ok(area.airspace.some(v => inside(p, v.poly)), `${name} should be in the CTR or a CTA`);
+  }
+});
+
+// A controller does not approve a frequency change nobody asked for. Go quiet on them and the service is
+// terminated instead — which is both what really happens and the more useful lesson.
+test('going quiet gets the service terminated, not a frequency change approved', async () => {
+  const scenario = scenarioFor(ROUTES[0], 5);
+  const silent = { qsy: () => '' };                   // say nothing when asked to leave the frequency
+  const events = await fly(scenario, PROFILES[1], 5,
+    { settings: { refusalBias: -1, trafficDensity: 'quiet' }, pilot: (e, o) => perfectPilot(e, { ...o, override: silent }) });
+  const atc = events.filter(e => e.type === 'atc' && e.speaker === 'atc').map(e => e.text);
+  assert.ok(atc.some(t => /Basic Service terminated/.test(t)), atc.slice(-4).join('\n'));
+  assert.ok(!atc.some(t => /frequency change approved/.test(t)), 'nothing was approved');
+  assert.ok(events.some(e => e.type === 'note' && /never asked for one/.test(e.text)));
+});
+
+// CAP 413 traffic information: clock code, distance, what it is doing relative to you, what it is, its level.
+test('traffic information is passed the way a controller passes it', async () => {
+  const seen = [];
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const events = await fly(scenarioFor(ROUTES[0], seed), PROFILES[1], seed, { settings: { refusalBias: -1 } });
+    for (const e of events) if (e.type === 'atc' && /, traffic,/.test(e.text || '')) seen.push(e.text);
+  }
+  assert.ok(seen.length, 'some traffic was passed across six flights');
+  for (const t of seen) {
+    assert.match(t, /, traffic, (one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) o.clock, \d miles, /, t);
+    assert.match(t, /(crossing left to right|crossing right to left|opposite direction|same direction|manoeuvring)/, t);
+    assert.match(t, /(indicating \d+ feet (above|below)|similar level|no height information)$/, t);
   }
 });
