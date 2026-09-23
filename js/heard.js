@@ -34,6 +34,8 @@ export function rowsFrom(events, { scenario = '', reg = '', at = Date.now() } = 
       subs: (r.substitutions || []).map(s => s.said).filter(Boolean),
     };
     if (e.heard) row.used = text;                       // a later guess matched better than the first
+    if (e.error) row.error = e.error;                   // why nothing came back, when nothing did
+    if (e.trace) row.trace = e.trace;                   // what the recogniser reported: audiostart, speechstart…
     if (e.alts && e.alts.length > 1) row.alts = e.alts;
     return row;
   });

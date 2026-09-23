@@ -211,14 +211,16 @@ function bindMicTest() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const btn = $('mic-test'), out = $('mic-result');
   if (!SR) { btn.disabled = true; out.textContent = 'Speech recognition is not available in this browser.'; return; }
-  let rec = null, text = '';
+  let rec = null, text = '', heard = false;
   const down = e => {
-    e.preventDefault(); text = '';
+    e.preventDefault(); text = ''; heard = false;
+    try { rec?.abort(); } catch { /* finished */ }   // an old one still running holds the recogniser (Android)
     rec = new SR(); rec.lang = 'en-GB'; rec.interimResults = true; rec.continuous = true;
+    for (const ev of ['audiostart', 'soundstart', 'speechstart']) rec.addEventListener(ev, () => { heard = true; });
     rec.onresult = ev => { text = [...ev.results].map(r => r[0].transcript).join(' '); out.textContent = text; };
     rec.onerror = ev => { out.textContent = `Microphone error: ${ev.error}. Check the site has microphone permission.`; };
     rec.onend = () => {
-      if (!text) return;
+      if (!text) { if (!/error/.test(out.textContent)) out.textContent = heard ? 'Heard sound but no words: try again, a little slower.' : 'No sound reached the speech recogniser. Check the microphone permission, and that nothing else is using the microphone.'; return; }
       const cs = findCallsign(tokens(text), profile().reg);
       out.innerHTML = `Heard: “${esc(text)}”<br>Understood as: ${esc(normalize(text))}<br>${cs ? `Callsign recognised (${cs.form === 'full' ? 'full' : cs.form === 'abbr' ? 'abbreviated' : 'partial'}).` : 'Callsign not recognised: try speaking a little slower and clearer.'}`;
     };
@@ -311,6 +313,7 @@ async function begin() {
         onHotMic: () => engine.hotMic(),
         onLevel: (rms) => { $('meter').style.width = Math.min(100, rms * 900) + '%'; },
         isRadioBusy: () => state.radio.busy,
+        onNotice: t => toast(t, 'info'),
       });
       await state.ptt.init({ hotMic: $('o-hot').checked });
     } else toast('This browser can’t recognise speech: you can listen, but not transmit.', 'warn');

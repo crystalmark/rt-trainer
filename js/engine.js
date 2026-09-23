@@ -183,8 +183,10 @@ export class Engine {
       return;
     }
     if (!text) {
-      this.log('empty-tx', {});
-      this.emit('toast', { level: 'info', text: 'Nothing recognised: try again, speaking after the click.' });
+      this.log('empty-tx', { error: meta.error || null, trace: meta.trace || null });
+      this.emit('toast', { level: 'info', text: meta.error === 'no sound reached the speech recogniser'
+        ? 'Nothing reached the speech recogniser. Try again: press, pause a beat, then speak.'
+        : `Nothing recognised${meta.error ? ` (${meta.error})` : ''}: try again, speaking after the click.` });
       return;
     }
     this.log('pilot', { text });
