@@ -276,7 +276,10 @@ export class Engine {
     // to asking for it, because the briefing tells you to call when there is a gap. It used to arrive as
     // "unexpected", and anything with "request" in it handed the whole flight to Claude. Keep it for the
     // initial expectation and cut the opening leg short so the script goes straight there.
-    if (!this.initialDone && !this.scenario.listen) {
+    // The same goes for any call you make on a leg that leads up to one — reporting overhead as the map shows
+    // you there, or asking to change frequency once told to report changing — which the scenario marks with
+    // { early: true }. A genuine change of plan held this way still goes to Claude: expect() sees to that.
+    if ((!this.initialDone && !this.scenario.listen) || this.earlyOk) {
       if (!this.earlyCall) this.earlyCall = tx;
       return;
     }
@@ -338,12 +341,12 @@ export class Engine {
     };
   }
 
-  async leg(label, nm, { cue } = {}) {
+  async leg(label, nm, { cue, early = false } = {}) {
     const minutes = (nm / this.ctx.speedKt) * 60;
     const ms = (minutes * 60000) / this.settings.timeScale;
     this.emit('leg', { label, nm, ms, cue, startedAt: this.now() });
     if (cue) this.log('cue', { text: cue });
-    await this.legSleep(ms);
+    await this.legSleep(ms, early);
   }
 
   // ---------- flying a planned route (your own routes) ----------
@@ -393,13 +396,14 @@ export class Engine {
   }
 
   /** A leg's own sleep: drains faster while skipping, and never while someone is on the frequency. */
-  async legSleep(ms) {
+  async legSleep(ms, early = false) {
     let left = ms;
     this.legActive = true;
+    this.earlyOk = early;
     try {
       while (left > 0) {
         this.checkAbort();
-        if (this.earlyCall) break;                    // you called before the leg ended: go and answer it
+        if (this.earlyCall && (early || !this.initialDone)) break;   // you called before it ended: go and answer
         const step = Math.min(left, this.clock.tick || 250);
         await this.clock.sleep(step);
         if (this.paused) continue;
@@ -407,7 +411,7 @@ export class Engine {
         left -= step * (quiet ? this.boost : 1);
       }
       this.checkAbort();
-    } finally { this.legActive = false; this.unskip(); }
+    } finally { this.legActive = false; this.earlyOk = false; this.unskip(); }
   }
 
   navStep() {
@@ -437,14 +441,16 @@ export class Engine {
   }
 
   /** Wait until the aircraft is s nm along the route (or at its hold point, if that comes first). */
-  async reach(s, { label, cue } = {}) {
+  async reach(s, { label, cue, early = false } = {}) {
     const n = this.nav, goal = Math.min(s, n.plan.total, n.limit);
     const left = Math.max(0, goal - n.s);
     this.emit('leg', { label, nm: left, ms: left / this.ctx.speedKt * 3600000 / this.settings.timeScale, cue, nav: true });
     if (cue) this.log('cue', { text: cue });
     this.legActive = true;
-    try { while (n.s < goal - 1e-6 && !this.earlyCall) await this.sleep(this.clock.tick || 250); }
-    finally { this.legActive = false; this.unskip(); }
+    this.earlyOk = early;
+    const answer = () => this.earlyCall && (early || !this.initialDone);
+    try { while (n.s < goal - 1e-6 && !answer()) await this.sleep(this.clock.tick || 250); }
+    finally { this.legActive = false; this.earlyOk = false; this.unskip(); }
   }
 
   // ---------- changing the route in flight (called by the map) ----------
@@ -554,7 +560,7 @@ export class Engine {
     this.lastWaitKind = 'call'; this.currentSpec = items;
     let nudged = 0, tries = 0;
     while (true) {
-      const early = initial && this.earlyCall;
+      const early = this.earlyCall;
       if (early) this.earlyCall = null;
       const tx = early || await this.waitPilot(timeout ?? (afterAtc ? this.settings.replyTimeout : this.settings.reportTimeout));
       if (initial && tx) this.initialDone = true;

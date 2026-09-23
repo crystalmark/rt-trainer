@@ -44,7 +44,7 @@ export default {
       }
       await s.atc('{CALL}, Basic Service, remain outside controlled airspace, report approaching Keighley', {
         readback: [BASIC(), ROS(), WILCO()], model: 'Basic Service, remain outside controlled airspace, wilco, {CALL}' });
-      await s.leg('Inbound to Keighley', 3);
+      await s.leg('Inbound to Keighley', 3, { early: true });
       await s.expect({ id: 'approaching', cue: 'Approaching Keighley, still outside the zone.', nudge: '{CALL}, report your position',
         items: [P('Keighley', ['keighley'])], model: '{CALL}, approaching Keighley, altitude 2800 feet' });
     }
@@ -73,7 +73,7 @@ export default {
       { readback: rb, clearance: true, model: 'Cleared to enter the Leeds control zone via Salts Mill, VFR, not above altitude 3000 feet, QNH 1017, route Salts Mill, Eccup Reservoir, wilco, {CALL}' });
     s.note('QNH changed from 1016 to 1017 in the clearance: the altimeter should be reset.');
 
-    await s.leg('Salts Mill', 4);
+    await s.leg('Salts Mill', 4, { early: true });
     await s.expect({ id: 'salts-mill', cue: 'At Salts Mill.', nudge: '{CALL}, report your position',
       items: [P('Salts Mill', SALTS_MILL)], model: '{CALL}, Salts Mill' });
     await s.atc(`{CALL}, roger, ${ctx.transponder ? 'radar ' : ''}control service, report Eccup Reservoir`, {
@@ -97,13 +97,13 @@ export default {
     if (s.chance(0.3)) {
       await s.atc('{CALL}, Leeds QNH now 1016', { readback: [QNH(1016)], model: 'QNH 1016, {CALL}' });
     }
-    await s.leg('Eccup Reservoir', 4);
+    await s.leg('Eccup Reservoir', 4, { early: true });
     await s.expect({ id: 'eccup', cue: 'Overhead Eccup Reservoir.', nudge: '{CALL}, report your position',
       items: [P('Eccup Reservoir', ['eccup'])], model: '{CALL}, Eccup Reservoir' });
     await s.atc('{CALL}, leave the zone south-east, not above altitude 3000 feet, report leaving controlled airspace', {
       readback: [P('leave the zone', ['leave the zone', 'leave', 'leaving'], { fix: 'leave the zone south-east' }), P('south-east', ['south east'], { fix: 'leave the zone south-east' }), ...NOT_ABOVE(3000), WILCO()],
       model: 'Leave the zone south-east, not above altitude 3000 feet, wilco, {CALL}' });
-    await s.leg('South-east edge of the CTR', 3);
+    await s.leg('South-east edge of the CTR', 3, { early: true });
     await s.expect({ id: 'leaving', cue: 'Crossing the CTR boundary.', nudge: '{CALL}, report your position',
       items: [P('leaving controlled airspace', ['leaving controlled airspace', 'leaving the zone', 'clear of controlled airspace', 'leaving', 'clear of the zone'])], model: '{CALL}, leaving controlled airspace' });
     await s.atc(ctx.transponder ? '{CALL}, Basic Service, squawk 7000, frequency change approved' : '{CALL}, Basic Service, frequency change approved', {
@@ -127,7 +127,7 @@ async function refusal(s) {
     ],
     model: 'Affirm, will not enter controlled airspace, routing west via Oxenhope, {CALL}' });
   await s.atc('{CALL}, roger, Basic Service continues, report changing frequency', { readback: [BASIC(), WILCO()], model: 'Basic Service, wilco, {CALL}' });
-  await s.leg('Routing west of the zone via Oxenhope', 5, { cue: 'Plan B: route round the west of the zone.' });
+  await s.leg('Routing west of the zone via Oxenhope', 5, { cue: 'Plan B: route round the west of the zone.', early: true });
   await s.expect({ id: 'qsy', cue: 'Well clear of the zone. Leave the frequency.', nudge: '{CALL}, say intentions',
     items: [P('changing frequency', ['changing', 'frequency', 'leaving your frequency', 'request frequency change'])], model: '{CALL}, clear of your airspace, changing frequency' });
   await s.atc(s.ctx.transponder ? '{CALL}, squawk 7000, frequency change approved' : '{CALL}, frequency change approved', {

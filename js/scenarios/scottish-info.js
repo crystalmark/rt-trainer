@@ -46,7 +46,7 @@ export default {
     await s.expect({ id: 'lauder', cue: 'Overhead Lauder.', nudge: '{CALL}, Scottish Information, report your position', timeout: 90,
       items: [P('position', ['lauder']), P('altitude', ['feet', 'altitude'], { soft: true })], model: '{CALL}, Lauder, altitude 2500 feet, next East Fortune at 45' });
     await s.atc('{CALL}, roger');
-    await s.leg('Lauder towards East Fortune', 12);
+    await s.leg('Lauder towards East Fortune', 12, { early: true });
     await s.expect({ id: 'qsy', cue: 'Time to change to East Fortune’s frequency.', nudge: '{CALL}, Scottish Information, say intentions',
       items: [P('changing frequency', ['changing', 'frequency', 'leaving'])], model: '{CALL}, 8 miles south of East Fortune, changing to East Fortune' });
     await s.atc(ctx.transponder ? '{CALL}, squawk 7000, frequency change approved' : '{CALL}, frequency change approved', {

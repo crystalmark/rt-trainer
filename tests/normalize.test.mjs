@@ -262,3 +262,20 @@ test('and the readback those numbers belong to now passes', () => {
   const q = match('QNH one zero one eight, two thousand feet, G-IA', [P('QNH 1018', ['1018']), P('2000 feet', ['2000'])], { reg: 'G-CZIA' }, { kind: 'readback' });
   assert.deepEqual(q.hardMissing.map(i => i.label), []);
 });
+
+// The clearance readback from the second log, three attempts, word for word. Every one was correct as spoken;
+// ATC corrected the first two purely on what the recogniser made of them.
+test('the same clearance read back three times now passes every time', () => {
+  const spec = [P('cleared to enter', ['cleared to enter', 'cleared into', 'cleared']), P('VFR', ['vfr']),
+    P('not above', ['not above']), P('2000 feet', ['2000']), P('QNH 1015', ['1015'])];
+  for (const said of [
+    'cleared via Ilkley  they are the  not of a 2000 q&h 1015 report ickley  golf India alpha',
+    'glare to enter via Ilkley VFR not above 2,000 feet qnh1015 Wilko  golf India alpha',
+    'clear to enter the Leeds control Zone via Ilkley VFR not above 2,000 feet unh1015 report Ilkley Wilko golf India alpha',
+  ]) {
+    const r = match(said, spec, { reg: 'G-CZIA' }, { kind: 'readback' });
+    assert.deepEqual(r.hardMissing.map(i => i.label), [], said);
+  }
+  // ...without reading anything into ordinary English
+  for (const t of ['they are the best', 'not of a doubt', 'glare of the sun', 'unhappy']) assert.equal(normalize(t), t);
+});

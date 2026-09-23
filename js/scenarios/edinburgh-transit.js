@@ -48,7 +48,7 @@ export default {
       readback: [P('cleared to enter', ['cleared to enter', 'cleared into', 'cleared'], { fix: 'cleared to enter the Edinburgh control zone via Musselburgh' }),
         P('via Musselburgh', ['musselburgh'], { fix: 'via Musselburgh' }), P('VFR', ['vfr'], { fix: 'VFR' }), ...NOT_ABOVE(2000), QNH(1012), WILCO()],
       model: 'Cleared to enter the Edinburgh control zone via Musselburgh, VFR, not above altitude 2000 feet, QNH 1012, wilco, {CALL}' });
-    await s.leg('Musselburgh', 3);
+    await s.leg('Musselburgh', 3, { early: true });
     await s.expect({ id: 'musselburgh', cue: 'Over Musselburgh Racecourse.', nudge: '{CALL}, report your position',
       items: [P('Musselburgh', ['musselburgh'])], model: '{CALL}, Musselburgh' });
     await s.atc('{CALL}, route direct Kirkcaldy Harbour, report Kirkcaldy Harbour', {
@@ -62,12 +62,12 @@ export default {
     await s.leg('Crossing the Forth', 4);
     if (s.chance(0.6)) await s.atc('{CALL}, traffic is a helicopter, 3 miles west of you, southbound, altitude 1500 feet', { readback: [TRAFFIC_ACK()], model: 'Traffic in sight, {CALL}' });
     if (s.chance(0.3)) await s.atc('{CALL}, Edinburgh QNH 1011', { readback: [QNH(1011)], model: 'QNH 1011, {CALL}' });
-    await s.leg('Kirkcaldy Harbour', 4);
+    await s.leg('Kirkcaldy Harbour', 4, { early: true });
     await s.expect({ id: 'kirkcaldy', cue: 'Over Kirkcaldy Harbour.', nudge: '{CALL}, report your position',
       items: [P('Kirkcaldy Harbour', ['kirkcaldy'])], model: '{CALL}, Kirkcaldy Harbour' });
     await s.atc('{CALL}, leave the zone northbound, report clear', {
       readback: [P('leave the zone northbound', ['northbound', 'north', 'leave'], { fix: 'leave the zone northbound' }), WILCO()], model: 'Leave the zone northbound, wilco, {CALL}' });
-    await s.leg('North of Kirkcaldy', 3);
+    await s.leg('North of Kirkcaldy', 3, { early: true });
     await s.expect({ id: 'clear', cue: 'Crossing the CTR boundary.', nudge: '{CALL}, report your position',
       items: [P('clear of controlled airspace', ['clear', 'leaving', 'outside'])], model: '{CALL}, clear of controlled airspace' });
     await s.atc((ctx.transponder ? '{CALL}, squawk 7000, ' : '{CALL}, ') + 'freecall Scottish Information 119.875', {

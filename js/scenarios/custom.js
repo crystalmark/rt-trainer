@@ -68,13 +68,14 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
   }
 
   // Fly on to `target`, dealing with any surprises scheduled before it.
-  async function flyTo(s, target, label, surprises = []) {
+  // `early`: the leg ends with a call of yours, so a call made a little before the point is kept for it.
+  async function flyTo(s, target, label, surprises = [], { early = false } = {}) {
     for (const ev of surprises.filter(e => !e.done && e.at < target).sort((a, b) => a.at - b.at)) {
       await s.reach(ev.at, { label });
       ev.done = true;
       await ev.run(s);
     }
-    await s.reach(target, { label });
+    await s.reach(target, { label, early });
   }
 
   function surprisesInZone(s, from, to, nextReport) {
@@ -119,7 +120,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
   // frequency change nobody asked for, and SAFETYCOM is only usable within 10 nm of where you are landing.
   async function runHome(s, P0, summary) {
     const end = Math.max(s.position().s + 0.3, P0.total - 5);
-    await s.reach(end, { label: `Towards ${destination(P0).name}` });
+    await s.reach(end, { label: `Towards ${destination(P0).name}`, early: true });   // ask when you are ready
     return leaveFrequency(s, summary);
   }
 
@@ -197,7 +198,8 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
   async function approach(s, P0) {
     const { ctx } = s, T = P0.transit, A = st.approaching;
     s.hold(Math.max(s.position().s, T.sIn - 1), 'Holding for your clearance');
-    await s.reach(Math.max(s.position().s + 0.3, T.sIn - 2.5), { label: A ? `Towards ${A.name}` : 'Towards controlled airspace' });
+    await s.reach(Math.max(s.position().s + 0.3, T.sIn - 2.5), { label: A ? `Towards ${A.name}` : 'Towards controlled airspace',
+      early: !ctx.transponder && !!A });                                  // then you report approaching
     if (!ctx.transponder && A) {
       st.approaching = null;
       await s.expect({ id: 'approaching', cue: `Approaching ${A.name}, still outside controlled airspace.`, nudge: '{CALL}, report your position',
@@ -251,7 +253,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     const surprises = to > from ? surprisesInZone(s, from, to, () => R[i] || null) : [];
     for (; i < R.length; i++) {
       const r = R[i];
-      await flyTo(s, at(r), r.name, surprises);
+      await flyTo(s, at(r), r.name, surprises, { early: true });
       await s.expect({ id: `report-${r.id}`, cue: `${r.name}.`, nudge: '{CALL}, report your position', items: [named(r)], model: `{CALL}, ${r.name}` });
       const svc = st.controlSaid ? '' : `${ctx.transponder ? 'radar ' : ''}control service`;
       const svcItems = svc ? [P('control service', ['control service'], { fix: svc })] : [];
@@ -271,7 +273,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
       }
       st.controlSaid = true;
     }
-    await flyTo(s, Math.min(P0.total, T.sOut + 0.3), 'Controlled airspace boundary', surprises);
+    await flyTo(s, Math.min(P0.total, T.sOut + 0.3), 'Controlled airspace boundary', surprises, { early: true });
     await s.expect({ id: 'leaving', cue: 'Leaving controlled airspace.', nudge: '{CALL}, report your position',
       items: [P('leaving controlled airspace', ['leaving controlled airspace', 'leaving the zone', 'clear of controlled airspace', 'leaving', 'clear of the zone', 'clear'])],
       model: '{CALL}, leaving controlled airspace' });
@@ -324,12 +326,12 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     st.report = null;
     const r = report && P0.nearestS(report);
     if (!ctx.transponder && r && r.d < 1.5 && r.s > s.position().s) {
-      await flyTo(s, r.s, report.name, surprises);
+      await flyTo(s, r.s, report.name, surprises, { early: true });
       await s.expect({ id: 'report', cue: `${report.name}.`, nudge: '{CALL}, report your position',
         items: [named(report)], model: `{CALL}, ${report.name}, altitude ${altitude} feet` });
       await s.atc('{CALL}, roger');
     }
-    await flyTo(s, end, `Towards ${destination(P0).name}`, surprises);
+    await flyTo(s, end, `Towards ${destination(P0).name}`, surprises, { early: true });
     await leaveFrequency(s, st.refused ? 'Transit refused: routed round' : 'Basic Service flight completed');
   }
 

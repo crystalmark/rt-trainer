@@ -55,7 +55,7 @@ export default {
         model: '{CALL}, 4 miles north-east of Burnley, altitude 2500 feet' } });
       await s.atc('{CALL}, roger');
     }
-    await s.leg('Approaching Burnley, leaving Leeds’ area', 4);
+    await s.leg('Approaching Burnley, leaving Leeds’ area', 4, { early: true });
     await s.expect({ id: 'qsy', cue: 'Leave the frequency.', nudge: '{CALL}, say intentions',
       items: [P('leaving frequency', ['frequency', 'changing', 'leaving', 'basic service'])], model: '{CALL}, request frequency change' });
     await s.atc(ctx.transponder ? '{CALL}, squawk 7000, frequency change approved' : '{CALL}, frequency change approved', {

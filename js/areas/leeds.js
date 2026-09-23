@@ -43,7 +43,7 @@ const LANDMARKS = [
   ['Shipley', 53.8333, -1.7667, 'town'], ['Haworth', 53.8291, -1.9483, 'village', ['hayworth', 'howarth'], 'Howerth'],
   ['Oxenhope', 53.8123, -1.952, 'village', ['oxen hope', 'auction hope', 'ox and hope'], 'Oxen-hope'], ['Denholme', 53.8019, -1.895, 'village', ['denholm']],
   ['Queensbury', 53.7666, -1.8491, 'village', ['queensberry']], ['Addingham', 53.9445, -1.8842, 'village', ['adding ham', 'adding them']],
-  ['Ilkley', 53.9245, -1.8233, 'town', ['ilkly', 'ilk lee']], ['Burley in Wharfedale', 53.9102, -1.758, 'village', ['burley', 'burly', 'burleigh']],
+  ['Ilkley', 53.9245, -1.8233, 'town', ['ilkly', 'ilk lee', 'ickley', 'ilki', 'ilkey', 'ikea']], ['Burley in Wharfedale', 53.9102, -1.758, 'village', ['burley', 'burly', 'burleigh']],
   ['Menston', 53.8904, -1.7439, 'village', ['menstone']], ['Otley', 53.9055, -1.6938, 'town', ['ottley', 'oatley']],
   ['Pool in Wharfedale', 53.9, -1.6167, 'village', ['pool']], ['Bolton Abbey', 53.9815, -1.8917, 'village'],
   ['Hebden Bridge', 53.7409, -2.0134, 'town', ['hebden']], ['Halifax', 53.7167, -1.85, 'town'],

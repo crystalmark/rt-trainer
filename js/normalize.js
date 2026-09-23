@@ -33,6 +33,7 @@ export const HESITATION = /^(e+r+m*|u+h+|u+m+|a+h+|e+h+|h+m+|m+h+m*)$/i;
 // Multi-word and spelling variants folded before tokenising.
 const PHRASES = [
   [/\bx-ray\b/g, 'xray'],
+  [/\b[qu]\s?(?:n|&|and)\s?h(?=\s?\d)/g, 'qnh '],   // glued to its number, or the Q heard as "you": unh1015
   [/\bq\.?\s?n\.?\s?h\.?\b/g, 'qnh'], [/\bq\s?(and|&)\s?h\b/g, 'qnh'],
   [/\bq\.?\s?f\.?\s?e\.?\b/g, 'qfe'],
   [/\bv\.?\s?f\.?\s?r\.?\b/g, 'vfr'],
@@ -59,7 +60,10 @@ const PHRASES = [
   [/\bair space\b/g, 'airspace'],
   [/\bcontrols? airspace\b/g, 'controlled airspace'],
   [/\bthe [dvb]?f\.?\s?r\.?\b/g, 'vfr'],                // "VFR" comes back as "the FR", "the DFR"
-  [/\bclear to (enter|transit|cross|land|leave)\b/g, 'cleared to $1'],   // the -ed goes missing, as on "controlled"
+  [/\b[bd]\.?\s?f\.?\s?r\.?\b/g, 'vfr'],                  // ...and "BFR"
+  [/\bthey are(?: the)?\b(?=\s+(?:not|\d))/g, 'vfr'],       // ...and, in a clearance, "they are the not above"
+  [/\bnot of(?: an?)?\b(?=\s+\d)/g, 'not above'],          // "not of a 2000"
+  [/\b(?:clear|glare) to (enter|transit|cross|land|leave)\b/g, 'cleared to $1'],   // the -ed goes missing, as on "controlled"
   [/\bmicro ?(light|lite)s?\b/g, 'microlight'],
   [/\bwill co\b/g, 'wilco'], [/\broutine\b(?= (own )?navigation)/g, 'resume'], [/\broutine\b/g, 'routing'],
 ];

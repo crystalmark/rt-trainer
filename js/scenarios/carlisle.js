@@ -43,21 +43,21 @@ export const carlisleArrival = {
         model: 'Runway 24 left-hand, QFE 1009, joining overhead, {CALL}' });
     }
     const ack = () => ctx.blind ? null : s.atc('{CALL}, roger');
-    await s.leg('Inbound to the overhead', 4);
+    await s.leg('Inbound to the overhead', 4, { early: true });
     await s.expect({ id: 'overhead', cue: 'Overhead at 2000 ft QFE.', items: [...tag, P('overhead', ['overhead'])], model: ctx.blind ? 'Carlisle Traffic, {CALL}, overhead, joining for runway 24, Carlisle' : '{CALL}, overhead, descending deadside for runway 24' });
     await ack();
-    await s.leg('Descending deadside', 1.2);
+    await s.leg('Descending deadside', 1.2, { early: true });
     await s.expect({ id: 'deadside', optional: true, timeout: 25, cue: 'Descending on the deadside.', items: [...tag, P('deadside', ['deadside', 'descending'])], model: '{CALL}, descending deadside, runway 24' });
-    await s.leg('Crosswind', 0.8);
+    await s.leg('Crosswind', 0.8, { early: true });
     await s.expect({ id: 'downwind', cue: 'Downwind for 24.', items: [...tag, P('downwind', ['downwind']), P('runway', ['24'], { soft: true })], model: '{CALL}, downwind 24' });
     if (!ctx.blind) await s.atc(s.chance(0.5) ? '{CALL}, roger, one ahead, a Cessna 152 on base' : '{CALL}, roger, no reported traffic');
-    await s.leg('Base leg', 1.2);
+    await s.leg('Base leg', 1.2, { early: true });
     await s.expect({ id: 'final', cue: 'Final 24.', items: [...tag, P('final', ['final']), P('runway', ['24'], { soft: true })], model: '{CALL}, final 24' });
     if (!ctx.blind) {
       await s.atc('{CALL}, roger, surface wind 230 degrees 8 knots');
       await s.expect({ id: 'final-ack', optional: true, timeout: 8, items: [], model: 'Roger, {CALL}' });
     }
-    await s.leg('Landing', 0.6);
+    await s.leg('Landing', 0.6, { early: true });
     await s.expect({ id: 'vacated', cue: 'Landed and clear of the runway.', items: [...tag, P('vacated', ['vacated', 'clear of the runway', 'runway clear', 'clear of'])], model: '{CALL}, runway vacated, taxiing to the south apron via Foxtrot' });
     if (!ctx.blind) await s.atc('{CALL}, roger, parking on the south apron');
     s.end(ctx.blind ? 'Landed: blind calls' : 'Landed');
@@ -79,7 +79,7 @@ export const carlisleDeparture = {
     ['Then', 'Change to Scottish Information 119.875.'],
   ],
   async run(s) {
-    await s.leg('South apron', 0.3, { cue: 'Make your first call.' });
+    await s.leg('South apron', 0.3, { cue: 'Make your first call.', early: true });
     await s.expect({ id: 'radio-check', initial: true, timeout: 180, cue: 'Radio check and departure information.',
       items: [P('radio check', ['radio check'], { soft: true }), P('departure information', ['departure information', 'airfield information', 'departure'], { soft: true }),
         P('position', ['apron', 'south'], { soft: true }), P('POB / destination', ['pob', 'person', 'to '], { soft: true })],
@@ -88,10 +88,10 @@ export const carlisleDeparture = {
       readback: [P('runway 24', ['24'], { fix: 'runway 24' }), QNH(1016)], model: 'Runway 24, QNH 1016, {CALL}' });
     await s.expect({ id: 'taxi', cue: 'Taxi for the hold.', items: [P('taxiing', ['taxiing', 'taxi']), P('runway', ['24'], { soft: true })], model: '{CALL}, taxiing for runway 24 via Foxtrot' });
     await s.atc('{CALL}, roger');
-    await s.leg('Holding point, power checks', 0.4);
+    await s.leg('Holding point, power checks', 0.4, { early: true });
     await s.expect({ id: 'lineup', cue: 'Checks complete, ready to go.', items: [P('lining up', ['lining up', 'line up', 'entering', 'departing'])], model: '{CALL}, lining up runway 24' });
     await s.atc(s.chance(0.3) ? '{CALL}, roger, traffic is a Cessna 152 reported late downwind' : '{CALL}, roger, no reported traffic, surface wind 240 degrees 10 knots');
-    await s.leg('Climbing out, turning north', 2.5);
+    await s.leg('Climbing out, turning north', 2.5, { early: true });
     await s.expect({ id: 'leaving', cue: 'Leaving the ATZ to the north.', items: [P('leaving', ['leaving', 'departing', 'changing']), P('frequency', ['scottish', '119.875', 'frequency'], { soft: true, why: 'Say which frequency you’re changing to.' })], model: '{CALL}, leaving the ATZ to the north, changing to Scottish Information 119.875' });
     await s.atc('{CALL}, roger');
     s.end('Departed');

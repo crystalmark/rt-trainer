@@ -434,3 +434,47 @@ test('once the first call is made, a real change of plan still goes to Claude', 
   const events = await engine.start();
   assert.ok(events.some(e => e.type === 'offscript'), 'off script once the flight is under way');
 });
+
+// From the second speech recognition log: three calls made just before the script got to them. The report
+// overhead Ilkley and the one leaving the zone each drew "say again" and had to be repeated; the request to
+// change frequency, made once told to report changing, went to Claude. The leg now keeps them.
+function earlyPilot(engine, { when, say, skip }) {
+  const perfect = perfectPilot(engine);
+  let sent = false;
+  return ev => {
+    if (!sent && when(ev)) { sent = true; setTimeout(() => sendWhenClear(engine, say), 1); }
+    if (ev.kind === 'awaiting' && ev.id === skip) return;              // already said it
+    perfect(ev);
+  };
+}
+function flyWith(scenario, pilot, claude = null) {
+  const clock = fakeClock(4000);
+  const radio = fakeRadio(clock);
+  let handler = () => {};
+  const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(3),
+    settings: { trafficDensity: 'quiet', refusalBias: -1 }, claude, onEvent: e => handler(e) });
+  handler = pilot(engine);
+  return engine.start();
+}
+
+test('asking to change frequency once told to report changing is not going off script', async () => {
+  const asked = [];
+  const claude = { atc: async () => { asked.push(1); return { transmissions: ['{CALL}, roger'], end: true, summary: 'Ended off script' }; } };
+  const events = await flyWith(scenarioFor(ROUTES[0], 3), engine => earlyPilot(engine, {
+    when: ev => ev.kind === 'log' && ev.event.type === 'readback' && /report changing frequency/.test(ev.event.atcText || ''),
+    say: 'golf India alpha request change of frequency to SafetyCom', skip: 'qsy' }), claude);
+  assert.ok(!events.some(e => e.type === 'offscript'), 'stayed on script');
+  assert.equal(asked.length, 0);
+  assert.match(events.find(e => e.type === 'call' && e.id === 'qsy')?.text || '', /SafetyCom/);
+  assert.ok(events.some(e => e.type === 'atc' && /frequency change approved/.test(e.text)));
+});
+
+test('reporting leaving the zone as you cross it is taken, not "say again"', async () => {
+  const events = await flyWith(scenarioFor(ROUTES[0], 3), engine => earlyPilot(engine, {
+    // the moment ATC asks for the report, well before the 0.3 nm past the boundary the script waits for
+    when: ev => ev.kind === 'log' && ev.event.type === 'readback' && /report leaving controlled airspace/.test(ev.event.atcText || ''),
+    say: 'golf India alpha leaving controlled airspace', skip: 'leaving' }));
+  assert.ok(!events.some(e => e.type === 'unexpected'), JSON.stringify(events.filter(e => e.type === 'unexpected')));
+  assert.equal(events.find(e => e.type === 'call' && e.id === 'leaving')?.text, 'golf India alpha leaving controlled airspace');
+  assertClean(events, 'early leaving report');
+});
