@@ -494,3 +494,13 @@ test('you cannot fly into the zone before you have called, let alone been cleare
   assert.ok(furthest < T.sIn, `flew ${furthest.toFixed(2)} nm, the zone starts at ${T.sIn.toFixed(2)}`);
   assert.ok(events.at(-1).type === 'end');
 });
+
+test('a wrong SafetyCom frequency is pointed out, because nobody on the radio will', async () => {
+  const run = say => flyWith(scenarioFor(ROUTES[0], 3), engine => earlyPilot(engine, {
+    when: ev => ev.kind === 'awaiting' && ev.id === 'qsy', say, skip: 'qsy' }));
+  const wrong = await run('golf India alpha request change of frequency to 135 decimal four five zero');
+  assert.ok(wrong.some(e => e.type === 'note' && /SafetyCom is 135\.480, and you said 135\.450/.test(e.text)),
+    JSON.stringify(wrong.filter(e => e.type === 'note')));
+  const right = await run('golf India alpha request change of frequency to SafetyCom one three five decimal four eight zero');
+  assert.ok(!right.some(e => e.type === 'note' && /SafetyCom is/.test(e.text)), 'nothing to say when it is right');
+});

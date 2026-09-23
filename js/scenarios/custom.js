@@ -132,6 +132,10 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
       nudge: '{CALL}, say intentions',
       items: [P('changing frequency', ['changing', 'frequency', 'leaving your frequency', 'request frequency change', 'safetycom'])],
       model: `{CALL}, ${miles(Math.max(1, plan.total - s.position().s))} from ${to}, request frequency change` });
+    // SafetyCom moved from 135.475 to 135.480 with 8.33 kHz spacing, and near misses are common. A controller
+    // will not correct a frequency that is not theirs, so the debrief does.
+    const f = asked && (asked.norm.match(/\b135\.4\d*\b/) || [])[0];
+    if (f && f !== '135.48') s.note(`SafetyCom is 135.480, and you said ${Number(f).toFixed(3)}. The controller will not correct a frequency that is not theirs.`);
     if (!asked) {
       await s.atc(x ? '{CALL}, Basic Service terminated, squawk 7000' : '{CALL}, Basic Service terminated');
       s.note('The controller terminated the service rather than approving a frequency change: you never asked for one.');
@@ -276,7 +280,9 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
       }
       st.controlSaid = true;
     }
-    await flyTo(s, Math.min(P0.total, T.sOut + 0.3), 'Controlled airspace boundary', surprises, { early: true });
+    // At the boundary: you report leaving as you leave. It waited 0.3 nm past the line, well after the whole
+    // aircraft symbol had cleared it on the map. 0.1 keeps it just clear of insideNow()'s 0.05 margin.
+    await flyTo(s, Math.min(P0.total, T.sOut + 0.1), 'Controlled airspace boundary', surprises, { early: true });
     await s.expect({ id: 'leaving', cue: 'Leaving controlled airspace.', nudge: '{CALL}, report your position',
       items: [P('leaving controlled airspace', ['leaving controlled airspace', 'leaving the zone', 'clear of controlled airspace', 'leaving', 'clear of the zone', 'clear'])],
       model: '{CALL}, leaving controlled airspace' });
