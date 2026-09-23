@@ -60,7 +60,7 @@ const PHRASES = [
   [/\bcontrols? airspace\b/g, 'controlled airspace'],
   [/\bthe [dvb]?f\.?\s?r\.?\b/g, 'vfr'],                // "VFR" comes back as "the FR", "the DFR"
   [/\bclear to (enter|transit|cross|land|leave)\b/g, 'cleared to $1'],   // the -ed goes missing, as on "controlled"
-  [/\bmicro ?lights?\b/g, 'microlight'],
+  [/\bmicro ?(light|lite)s?\b/g, 'microlight'],
   [/\bwill co\b/g, 'wilco'], [/\broutine\b(?= (own )?navigation)/g, 'resume'], [/\broutine\b/g, 'routing'],
 ];
 
@@ -83,7 +83,16 @@ function cleanDecimal(s) {
 
 /** Interpret one run of number tokens: digit strings, spoken digits, compounds, decimals. */
 function interpretRun(run) {
-  if (run.includes('hundred') || run.includes('thousand')) {
+  // Only the word just before "thousand" or "hundred" is its multiplier (or a tens word and a digit: "twenty
+  // five"). Anything earlier is a separate number read digit by digit. Treating the whole run as one cardinal
+  // added the digits up: "QNH one zero one eight, two thousand feet" came out as 12000.
+  const k = run.findIndex(w => w === 'thousand' || w === 'hundred');
+  if (k > 0) {
+    let start = k - 1;
+    if (start > 0 && run[start] in DIGITS && run[start - 1] in TENS) start--;
+    if (start > 0) return [...interpretRun(run.slice(0, start)), ...interpretRun(run.slice(start))];
+  }
+  if (k >= 0) {
     let total = 0, cur = 0;
     for (const w of run) {
       if (w === 'thousand') { total += (cur || 1) * 1000; cur = 0; }
@@ -145,6 +154,16 @@ export function normalize(text, { folds = true } = {}) {
       const w = raw[i++];
       tokens.push(PHONETIC[w] || w);
     }
+  }
+  // A squawk is four digits and a pressure setting three or four. Read digit by digit, whatever number follows
+  // runs straight on into it — "QNH one zero one eight, four miles" arrived as 10184, "squawk 5626 two miles" as
+  // 56262 — and a pause is no help, because the recogniser's pauses fall mid-number just as often. So split
+  // anything past the code's own length back off as the next number.
+  for (let i = 0; i + 1 < tokens.length; i++) {
+    const next = tokens[i + 1];
+    const m = tokens[i] === 'squawk' ? /^([0-7]{4})(\d+)$/.exec(next)
+      : /^(qnh|qfe|rps|pressure)$/.test(tokens[i]) ? /^(9\d\d|1\d{3})(\d+)$/.exec(next) : null;
+    if (m) tokens.splice(i + 1, 1, m[1], m[2]);
   }
   return tokens.join(' ');
 }

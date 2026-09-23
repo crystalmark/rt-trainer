@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { normalize, findCallsign, tokens, speakable } from '../js/normalize.js';
 import { match, hasAny } from '../js/matcher.js';
 import { AREAS } from '../js/areas/index.js';
-import { BASIC, SQUAWK, ROS } from '../js/scenarios/common.js';
+import { BASIC, SQUAWK, ROS, P } from '../js/scenarios/common.js';
 import { rowsFrom, stats, append, load, clear } from '../js/heard.js';
 
 test('numbers in all the ways speech recognition returns them', () => {
@@ -140,7 +140,9 @@ test('and the whole readback then passes clean', () => {
 // thing that must not be papered over, because reading back the wrong QNH is the error the check exists for.
 test('a clearance readback: the acronyms recovered, the number left alone', () => {
   const said = 'clear to enter the Leeds controlled zone q&h 10005 the dfr not above 2,000 feet Wilco golf India alpha';
-  assert.equal(normalize(said), 'cleared to enter the leeds controlled zone qnh 10005 vfr not above 2000 feet wilco g i a');
+  // 10005 is split at the pressure's own length like any code; what matters is that it never becomes 1005.
+  assert.equal(normalize(said), 'cleared to enter the leeds controlled zone qnh 1000 5 vfr not above 2000 feet wilco g i a');
+  assert.ok(!/\b1005\b/.test(normalize(said)), 'a mangled pressure is never repaired into the right one');
 
   // Spelling the letters out is the thing a pilot can actually do about it: spaced letters fold back together,
   // where the recogniser's guess at the acronym does not.
@@ -231,4 +233,32 @@ test('the log records off-script and unrecognised transmissions too', () => {
   assert.equal(s.unjudged, 4);
   assert.equal(s.heardNothing, 1, 'the recogniser returned no words once');
   assert.equal(s.failRate, 0, 'the rate is over what was marked, not over everything');
+});
+
+// Found by the speech recognition log on its first real flight — and not the recogniser's fault. Chrome heard
+// "QNH one zero one eight, four miles" perfectly; the normaliser ran the numbers together.
+test('numbers next to each other stay separate numbers', () => {
+  // the details call from the log, word for word
+  assert.equal(
+    normalize('golf Charlie Zulu India alpha microlite Oxenhope Ilkley Skipton Oxenhope 1,700 feet qnh one zero one eight  four miles southwest salt Mill VIP'),
+    'g c z i a microlight oxenhope ilkley skipton oxenhope 1700 feet qnh 1018 4 miles south west salt mill vip');
+
+  // a code has a fixed length, so whatever follows it is the next number
+  assert.equal(normalize('squawk 5626 two miles'), 'squawk 5626 2 miles');
+  assert.equal(normalize('squawk five six two six two miles north'), 'squawk 5626 2 miles north');
+  assert.equal(normalize('qnh nine nine eight three miles'), 'qnh 998 3 miles');
+
+  // and only the word before "thousand" multiplies: this one used to come out as 12000
+  assert.equal(normalize('qnh one zero one eight two thousand feet'), 'qnh 1018 2000 feet');
+  for (const [said, want] of [['two thousand five hundred feet', '2500 feet'], ['one thousand seven hundred', '1700'],
+    ['eleven thousand', '11000'], ['twenty five thousand', '25000'], ['squawk seven thousand', 'squawk 7000']]) {
+    assert.equal(normalize(said), want, said);
+  }
+});
+
+test('and the readback those numbers belong to now passes', () => {
+  const r = match('squawk 5626 two miles north of Skipton G-IA', [SQUAWK('5626')], { reg: 'G-CZIA' }, { kind: 'readback' });
+  assert.deepEqual(r.hardMissing, []);
+  const q = match('QNH one zero one eight, two thousand feet, G-IA', [P('QNH 1018', ['1018']), P('2000 feet', ['2000'])], { reg: 'G-CZIA' }, { kind: 'readback' });
+  assert.deepEqual(q.hardMissing.map(i => i.label), []);
 });
