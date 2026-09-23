@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { normalize, findCallsign, tokens, speakable } from '../js/normalize.js';
 import { match, hasAny } from '../js/matcher.js';
 import { AREAS } from '../js/areas/index.js';
+import { BASIC, SQUAWK, ROS } from '../js/scenarios/common.js';
 
 test('numbers in all the ways speech recognition returns them', () => {
   assert.equal(normalize('QNH one zero one seven'), 'qnh 1017');
@@ -110,4 +111,26 @@ test('a callsign survives one of its letters being heard as a word', () => {
   assert.equal(form('golf Charlie Zulu requesting basic service and transit'), null, 'the letters simply are not there');
   assert.equal(form('golf author lima hotel papa', 'G-CLHP'), 'partial', '“author” cannot stand in for Charlie');
   assert.equal(form('golf Charlie lima hotel papa', 'G-CLHP'), 'full');
+});
+
+// "Controlled airspace" is the phrase that must be read back exactly, and the recogniser keeps clipping it to
+// "control airspace" — which then reads as the pilot shortening it themselves, and is marked as a substitution.
+test('the recogniser clips “controlled airspace”, and turns squawk into real words', () => {
+  assert.equal(normalize('basic service cork 5626 remain outside control airspace golf India alpha'),
+    'basic service squawk 5626 remain outside controlled airspace g i a');
+  assert.equal(normalize('remaining outside controls air space'), 'remaining outside controlled airspace');
+  assert.equal(normalize('quark 7000'), 'squawk 7000');
+
+  // ...without touching the control zone, which is a different place, or Cork, which is a real one
+  assert.equal(normalize('cleared to enter the control zone'), 'cleared to enter the control zone');
+  assert.equal(normalize('report leaving the control zone'), 'report leaving the control zone');
+  assert.equal(normalize('overhead Cork'), 'overhead cork');
+});
+
+test('and the whole readback then passes clean', () => {
+  const spec = [BASIC(), SQUAWK('5626'), ROS()];
+  const r = match('basic service cork 5626 remain outside control airspace golf India alpha', spec, { reg: 'G-CZIA' }, { kind: 'readback' });
+  assert.deepEqual(r.hardMissing.map(i => i.label), []);
+  assert.deepEqual(r.substitutions.map(i => i.substituted), []);
+  assert.equal(r.score, 100);
 });

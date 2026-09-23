@@ -51,11 +51,15 @@ const PHRASES = [
   // real words, which no pattern should be catching by accident.
   [/\bs[qkc][uw]?[ao]?[wr]?c?ks?\b/g, 'squawk'],
   [/\b(escort|squat|squaw|squeak|squad|stork|swat|s quark|squawked|squawking)\b/g, 'squawk'],
+  [/\b(cork|corks|corked|quark|quarks)\b(?=\s+\d)/g, 'squawk'],   // real words: only when a code follows
   [/\b(remain|remaining) outside a controlled\b/g, '$1 outside controlled'],
+  // "Controlled airspace" is the phrase that has to be read back exactly, and the recogniser keeps shaving it:
+  // "control airspace", "controls air space". It never touches "control zone", which is a different place.
+  [/\bair space\b/g, 'airspace'],
+  [/\bcontrols? airspace\b/g, 'controlled airspace'],
   [/\bthe f\.?\s?r\.?\b/g, 'vfr'],                    // "VFR" comes back as "the FR"
   [/\bmicro ?lights?\b/g, 'microlight'],
   [/\bwill co\b/g, 'wilco'], [/\broutine\b(?= (own )?navigation)/g, 'resume'], [/\broutine\b/g, 'routing'],
-  [/\bcontrol zone\b/g, 'control zone'],
 ];
 
 /** Split a written registration like "G-CLHP" into separate letters. */
