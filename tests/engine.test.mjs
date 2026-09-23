@@ -6,7 +6,7 @@ import { PROFILES } from '../js/config.js';
 import { fakeClock, fakeRadio, seeded, perfectPilot, sendWhenClear } from './helpers.mjs';
 import { listenScenario, LISTEN_UNITS } from '../js/scenarios/listen.js';
 import { computeDebrief } from '../js/debrief.js';
-import { briefLine } from '../js/scenarios/common.js';
+import { briefLine, P } from '../js/scenarios/common.js';
 import { AREAS } from '../js/areas/index.js';
 import { parseRoute } from '../js/route.js';
 import { customScenario } from '../js/scenarios/custom.js';
@@ -278,4 +278,58 @@ test('traffic does not take the gap the controller left for you', async () => {
     const jumped = others.find(o => o.t >= a.t && o.t < end);
     assert.ok(!jumped, `“${jumped && jumped.text}” came ${jumped && jumped.t - a.t} s after “${a.text}”`);
   }
+});
+
+// Skipping ahead must never carry you past something. It is only offered on a leg, and only while the frequency
+// is clear and nothing is expected of you.
+test('skip ahead runs the leg out fast, and is refused when it would skip a call', async () => {
+  const clock = fakeClock(100);
+  const radio = fakeRadio(clock);
+  let engine;
+  const scenario = {
+    id: 'skip-test', title: 'Skip', unit: 'Leeds Radar', freq: '134.580',
+    briefing: () => [['Aircraft', 'G-CZIA']],
+    async run(s) {
+      await s.leg('A long quiet leg', 12);                   // 11 minutes of flight: ~6 s here, or 0.3 s skipped
+      await s.atc('{CALL}, report your position', { reply: { id: 'pos', timeout: 120,
+        items: [P('position', ['overhead'])], model: '{CALL}, overhead Ilkley' } });
+      await s.pause(600);
+    },
+  };
+  engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(2), settings: { trafficDensity: 'quiet' } });
+  const flight = engine.start();
+
+  await new Promise(r => setTimeout(r, 80));
+  assert.equal(engine.canSkip(), true, 'a leg is skippable');
+  assert.equal(engine.skip(), true);
+  assert.equal(engine.boost, 20);
+
+  // the leg runs out far sooner than its 6 s, the controller calls, and the skip switches itself off
+  await new Promise(r => setTimeout(r, 1200));
+  assert.equal(engine.boost, 1, 'the skip ends with the leg');
+  assert.ok(radio.lines.some(l => /report your position/.test(l[1])), 'the call still happened');
+  assert.equal(engine.canSkip(), false, 'nothing to skip while the controller is waiting for you');
+  assert.equal(engine.skip(), false);
+
+  engine.stop();
+  await flight;
+});
+
+test('a second press of skip puts it back to real time', async () => {
+  const clock = fakeClock(100);
+  const radio = fakeRadio(clock);
+  const scenario = {
+    id: 'skip-off', title: 'Skip', unit: 'Leeds Radar', freq: '134.580',
+    briefing: () => [['Aircraft', 'G-CZIA']],
+    async run(s) { await s.leg('A long quiet leg', 60); },
+  };
+  const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(2), settings: { trafficDensity: 'quiet' } });
+  const flight = engine.start();
+  await new Promise(r => setTimeout(r, 80));
+  assert.equal(engine.skip(), true);
+  assert.equal(engine.boost, 20);
+  assert.equal(engine.skip(), false, 'pressing it again turns it off');
+  assert.equal(engine.boost, 1);
+  engine.stop();
+  await flight;
 });

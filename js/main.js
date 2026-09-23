@@ -334,6 +334,7 @@ function resetFlightUi(p) {
   $('rh-squawk').textContent = p.transponder ? '7000' : 'NONE';
   $('f-text').textContent = `Text: ${state.showText ? 'on' : 'off'}`;
   $('f-pause').textContent = 'Pause';
+  $('f-skip').textContent = 'Skip ahead'; $('f-skip').setAttribute('aria-pressed', 'false'); $('f-skip').classList.remove('on');
 }
 
 let legTimer = null;
@@ -354,6 +355,13 @@ function onEngineEvent(ev) {
     case 'action': showAction(ev); break;
     case 'ident': flashXpdr(); break;
     case 'route': state.map?.setRoute(ev); break;
+    case 'skip': {
+      const b = $('f-skip');
+      b.textContent = ev.on ? 'Skipping…' : 'Skip ahead';
+      b.setAttribute('aria-pressed', String(!!ev.on));
+      b.classList.toggle('on', !!ev.on);
+      break;
+    }
     case 'cue': case 'position': $('cue').textContent = ev.text || ev.cue || ev.label || ''; break;
     case 'toast': if (ev.text && (!/without pressing PTT/.test(ev.text) || $('o-hot').checked)) toast(ev.text, ev.level); break;
     case 'end': onEnd(ev); break;
@@ -505,7 +513,17 @@ function bindFlight() {
     $('f-text').textContent = `Text: ${state.showText ? 'on' : 'off'}`;
     for (const l of $('log').children) if (!l.classList.contains('me')) { l.classList.toggle('hidden-text', !state.showText); l.lastChild.textContent = state.showText ? l.dataset.text : '(transmission)'; }
   });
-  $('f-pause').addEventListener('click', () => {
+  // Skip the boring middle of a long leg. The engine refuses while anyone is talking or anything is expected of
+// you, so it can never carry you past a call; it stops by itself when the leg ends.
+$('f-skip').addEventListener('click', () => {
+  const e = state.engine;
+  if (!e) return;
+  const wasOn = e.boost !== 1;
+  const ok = e.skip();
+  if (wasOn) toast('Back to real time.', 'info');
+  else if (!ok) toast('Nothing to skip just now: wait until the frequency is clear.', 'info');
+});
+$('f-pause').addEventListener('click', () => {
     const e = state.engine; if (!e) return;
     e.paused = !e.paused; $('f-pause').textContent = e.paused ? 'Resume' : 'Pause';
     if (e.paused) speechSynthesis.pause(); else speechSynthesis.resume();
@@ -582,14 +600,18 @@ function renderHeard(rows) {
 
 function saveHeard() {
   const all = heardLoad(localStorage);
-  if (!all.length) return toast('Nothing recorded yet.', 'info');
+  if (!all.length) return toast('Nothing recorded yet: fly one and it will be here.', 'info');
   const blob = new Blob([JSON.stringify({ saved: new Date().toISOString(), stats: heardStats(all), rows: all }, null, 1)],
     { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = url;
   a.download = `rt-heard-${new Date().toISOString().slice(0, 10)}.json`;
+  a.style.display = 'none';
+  document.body.append(a);                   // a detached anchor does not download on Android Chrome
   a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 5000);
+  toast(`Saved ${all.length} transmission${all.length === 1 ? '' : 's'}.`, 'info');
 }
 
 function renderTl(e) {

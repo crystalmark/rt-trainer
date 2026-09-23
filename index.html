@@ -198,7 +198,6 @@
   </section>
 
   <section class="log" id="log" aria-live="polite"></section>
-  <div id="toast" class="toast" hidden></div>
   <div id="mine" class="mine mono" hidden></div>
 
   <button id="ptt" class="ptt" type="button" aria-label="Push to talk (hold)">
@@ -209,6 +208,7 @@
   <div class="flightbar">
     <button id="f-view" class="btn small ghost" type="button" hidden>Log</button>
     <button id="f-text" class="btn small ghost" type="button">Text: off</button>
+    <button id="f-skip" class="btn small ghost" type="button" aria-pressed="false">Skip ahead</button>
     <button id="f-pause" class="btn small ghost" type="button">Pause</button>
     <button id="f-end" class="btn small ghost" type="button">End &amp; debrief</button>
   </div>
@@ -246,6 +246,9 @@
     <button id="d-again" class="btn primary" type="button">Fly it again</button>
   </div>
 </main>
+
+<!-- Outside the screens: a toast raised from the debrief or setup has to be visible there too. -->
+<div id="toast" class="toast" hidden></div>
 
 <script type="module" src="js/main.js"></script>
 </body>

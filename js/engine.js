@@ -59,6 +59,8 @@ export class Engine {
     this.standbyPending = false;
     this.blocked = null;
     this.keyed = false;
+    this.boost = 1;                // > 1 while skipping ahead down a leg
+    this.legActive = false;        // a leg or a run to a point is in progress: the only thing skippable
     this.freeHistory = [];
     this.t0 = 0;
     this.abortReason = null;
@@ -333,7 +335,7 @@ export class Engine {
     const ms = (minutes * 60000) / this.settings.timeScale;
     this.emit('leg', { label, nm, ms, cue, startedAt: this.now() });
     if (cue) this.log('cue', { text: cue });
-    await this.sleep(ms);
+    await this.legSleep(ms);
   }
 
   // ---------- flying a planned route (your own routes) ----------
@@ -356,7 +358,47 @@ export class Engine {
 
   navRate() {
     const busy = this.radio.busy || this.channelLocked || this.waiter || this.keyed || this.exchangeActive;
-    return busy ? 1 : this.settings.timeScale;
+    return busy ? 1 : this.settings.timeScale * this.boost;
+  }
+
+  /**
+   * Skip ahead down the leg you are on. It is refused while anyone is talking, while anything is expected of
+   * you, or when there is no leg to skip — so it can never carry you past a call. It stops by itself when the
+   * leg ends, which is the next thing that happens, and a second press cancels it.
+   */
+  skip(factor = 20) {
+    if (this.boost !== 1) { this.unskip(); return false; }
+    if (!this.canSkip()) return false;
+    this.boost = factor;
+    this.log('skip', { text: 'Skipped ahead' });
+    this.emit('skip', { on: true });
+    return true;
+  }
+  unskip() {
+    if (this.boost === 1) return;
+    this.boost = 1;
+    this.emit('skip', { on: false });
+  }
+  canSkip() {
+    return !!(this.running && this.legActive && !this.paused && !this.waiter && !this.keyed
+      && !this.radio.busy && !this.channelLocked && !this.exchangeActive);
+  }
+
+  /** A leg's own sleep: drains faster while skipping, and never while someone is on the frequency. */
+  async legSleep(ms) {
+    let left = ms;
+    this.legActive = true;
+    try {
+      while (left > 0) {
+        this.checkAbort();
+        const step = Math.min(left, this.clock.tick || 250);
+        await this.clock.sleep(step);
+        if (this.paused) continue;
+        const quiet = !this.radio.busy && !this.waiter && !this.channelLocked && !this.exchangeActive;
+        left -= step * (quiet ? this.boost : 1);
+      }
+      this.checkAbort();
+    } finally { this.legActive = false; this.unskip(); }
   }
 
   navStep() {
@@ -391,7 +433,9 @@ export class Engine {
     const left = Math.max(0, goal - n.s);
     this.emit('leg', { label, nm: left, ms: left / this.ctx.speedKt * 3600000 / this.settings.timeScale, cue, nav: true });
     if (cue) this.log('cue', { text: cue });
-    while (n.s < goal - 1e-6) await this.sleep(this.clock.tick || 250);
+    this.legActive = true;
+    try { while (n.s < goal - 1e-6) await this.sleep(this.clock.tick || 250); }
+    finally { this.legActive = false; this.unskip(); }
   }
 
   // ---------- changing the route in flight (called by the map) ----------
