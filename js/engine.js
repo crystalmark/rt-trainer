@@ -272,6 +272,14 @@ export class Engine {
       return;
     }
     if (this.mode === 'free') { this.freeQueue.push(tx); this.freeKick?.(); return; }
+    // Before your first call, whatever you transmit IS your first call — even if the script had not got round
+    // to asking for it, because the briefing tells you to call when there is a gap. It used to arrive as
+    // "unexpected", and anything with "request" in it handed the whole flight to Claude. Keep it for the
+    // initial expectation and cut the opening leg short so the script goes straight there.
+    if (!this.initialDone && !this.scenario.listen) {
+      if (!this.earlyCall) this.earlyCall = tx;
+      return;
+    }
     if (this.claude && looksLikeRequest(tx.text)) { this.abortReason = new OffScript(tx); return; }
     this.log('unexpected', { text: tx.text });
     this.queueAtc(looksLikeRequest(tx.text) ? '{CALL}, unable, continue as cleared' : '{CALL}, say again');
@@ -391,6 +399,7 @@ export class Engine {
     try {
       while (left > 0) {
         this.checkAbort();
+        if (this.earlyCall) break;                    // you called before the leg ended: go and answer it
         const step = Math.min(left, this.clock.tick || 250);
         await this.clock.sleep(step);
         if (this.paused) continue;
@@ -434,7 +443,7 @@ export class Engine {
     this.emit('leg', { label, nm: left, ms: left / this.ctx.speedKt * 3600000 / this.settings.timeScale, cue, nav: true });
     if (cue) this.log('cue', { text: cue });
     this.legActive = true;
-    try { while (n.s < goal - 1e-6) await this.sleep(this.clock.tick || 250); }
+    try { while (n.s < goal - 1e-6 && !this.earlyCall) await this.sleep(this.clock.tick || 250); }
     finally { this.legActive = false; this.unskip(); }
   }
 
@@ -545,7 +554,10 @@ export class Engine {
     this.lastWaitKind = 'call'; this.currentSpec = items;
     let nudged = 0, tries = 0;
     while (true) {
-      const tx = await this.waitPilot(timeout ?? (afterAtc ? this.settings.replyTimeout : this.settings.reportTimeout));
+      const early = initial && this.earlyCall;
+      if (early) this.earlyCall = null;
+      const tx = early || await this.waitPilot(timeout ?? (afterAtc ? this.settings.replyTimeout : this.settings.reportTimeout));
+      if (initial && tx) this.initialDone = true;
       if (!tx) {
         if (optional) return null;
         if (nudge && nudged < 2) { nudged++; this.log('late', { id }); await this.atc(nudge); continue; }

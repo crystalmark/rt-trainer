@@ -384,3 +384,53 @@ test('traffic information is passed the way a controller passes it', async () =>
     assert.match(t, /(indicating \d+ feet (above|below)|similar level|no height information)$/, t);
   }
 });
+
+// The briefing says "call Leeds Radar when there is a gap", but the script only started listening for that call
+// 10 nm from the zone. A call made earlier arrived as unexpected, and with "request" in it and a Claude key set,
+// handed the whole flight to Claude — which is what the first speech recognition log showed, at 19 seconds.
+test('calling before the script asks is your first call, not going off script', async () => {
+  const scenario = scenarioFor(ROUTES[0], 3);
+  const clock = fakeClock(4000);
+  const radio = fakeRadio(clock);
+  const asked = [];
+  // Ends the session at once if it is ever reached, so the old behaviour fails this test quickly instead of
+  // sitting in free mode waiting for fifteen minutes of silence.
+  const claude = { atc: async () => { asked.push(1); return { transmissions: ['{CALL}, roger'], end: true, summary: 'Ended off script' }; } };
+  let handler = () => {};
+  const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(3),
+    settings: { trafficDensity: 'quiet', refusalBias: -1 }, claude, onEvent: e => handler(e) });
+  const perfect = perfectPilot(engine);
+  handler = ev => { if (ev.kind === 'awaiting' && ev.id === 'initial') return; perfect(ev); };   // already called
+  const flight = engine.start();
+  sendWhenClear(engine, 'Leeds Radar, golf Charlie Zulu India alpha, request Basic Service and transit');
+  const events = await flight;
+
+  assert.ok(!events.some(e => e.type === 'offscript'), 'the flight stayed on script');
+  assert.equal(asked.length, 0, 'Claude was never asked');
+  const init = events.find(e => e.type === 'call' && e.id === 'initial');
+  assert.match(init?.text || '', /request Basic Service and transit/, 'the early call was taken as the initial call');
+  assert.ok(events.some(e => e.type === 'atc' && /pass your message/.test(e.text)), 'and answered');
+  assertClean(events, 'early caller');
+});
+
+test('once the first call is made, a real change of plan still goes to Claude', async () => {
+  const scenario = scenarioFor(ROUTES[0], 3);
+  const clock = fakeClock(4000);
+  const radio = fakeRadio(clock);
+  const claude = { atc: async () => ({ transmissions: ['{CALL}, roger, divert approved'], end: true, summary: 'Diverted' }) };
+  let handler = () => {};
+  const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(3),
+    settings: { trafficDensity: 'quiet', refusalBias: -1 }, claude, onEvent: e => handler(e) });
+  const perfect = perfectPilot(engine);
+  let diverted = false;
+  handler = ev => {
+    perfect(ev);
+    // after the squawk is set, ask for something the script does not cover
+    if (!diverted && ev.kind === 'log' && ev.event.type === 'squawk-set') {
+      diverted = true;
+      setTimeout(() => sendWhenClear(engine, 'G-IA, request diversion to Sherburn due weather'), 5);
+    }
+  };
+  const events = await engine.start();
+  assert.ok(events.some(e => e.type === 'offscript'), 'off script once the flight is under way');
+});
