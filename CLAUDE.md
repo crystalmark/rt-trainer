@@ -77,6 +77,11 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
 - Only put controlled airspace in an area's `airspace`. Class G that looks like a corridor on the chart is not
   controlled airspace and must stay out of it, or the app will invent a clearance for it. Class A goes in, and
   the planner refuses to route through it rather than offering a VFR transit nobody could be given.
+- Flight Information Service frequencies go by sector, not FIR (UK AIP ENR 6-32 and 6-33). London Information
+  sector I, 125.475, covers northern England up the Eden valley; Scottish Information sector A, 119.875, is the
+  daytime (0800–2000) Basic Service below FL55 for the Borders, Lothian and north Cumbria, Carlisle included.
+  Carlisle has no AIP entry any more: the airport's own site is the source (Air/Ground 123.605, weekdays when
+  possible, blind calls otherwise). Beware 122.800 "Carlisle Traffic": a flight-simulator network's frequency.
 - Check the AIP rather than trusting a chart or a memory of one: the Manchester Low Level Route was withdrawn on
   20 February 2025 and this file still described it eighteen months later.
 - Keep the engine DOM-free so it stays testable in Node.
@@ -100,7 +105,8 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
 - Import a SkyDemon route (need a sample export to see the format); unknown place names via the geocoder.
 - Routes over the airport: have ATC route you round it rather than just warning in the briefing.
 - If the microphone is refused, still fly the scenario listen-only instead of failing to start.
-- London Information scenario for Yorkshire local flying (confirm the frequency for the sector first).
+- A farm-strip scenario on SafetyCom 135.480 (within 10 nm and below 2000 ft above the strip): blind calls, with
+  St Michael's and Crossland Moor on the same frequency to be listened for and not talked over.
 - Better radio audio: synthesise through an API and band-limit it in Web Audio for a proper VHF sound (the browser's
   own voices can't be routed through Web Audio). It is also the only way to get regional accents: nothing in Chrome or
   macOS offers a Scottish or Yorkshire voice.

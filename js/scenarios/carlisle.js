@@ -1,4 +1,4 @@
-import { P, QNH, details, carlisleTraffic } from './common.js';
+import { P, QNH, BASIC, WILCO, details, initialCall, carlisleTraffic, londonInfoTraffic } from './common.js';
 
 // Carlisle is an Air/Ground station: no clearances, no instructions. The pilot announces.
 const AG_WARN = [
@@ -7,10 +7,79 @@ const AG_WARN = [
   { re: /\binstructions\b/, why: 'Air/Ground operators can’t give instructions: ask for airfield information.' },
 ];
 
+// Carlisle Radio, from the first call to clear of the runway: the same airfield whichever way you come in. An
+// Air/Ground operator gives information and asks how you would like to join, because nobody there can tell you
+// (a 2019 flight in shows exactly that: "traffic now short final runway two-four, how would you like to join?").
+// Weekdays when possible, says the airport, and otherwise blind calls on the same frequency.
+async function arriveCarlisle(s, { from, where, position, pending = 'Call Carlisle Radio.' }) {
+  const { ctx } = s;
+  ctx.blind = s.chance(0.25);
+  const det = details(ctx, { from, to: 'carlisle', position, altitude: 2500, request: ['land', 'landing', 'join', 'inbound', 'airfield information'] });
+  const detSoft = det.map(d => ({ ...d, hard: false, ask: undefined }));
+  const initial = [P('PPR', ['ppr', 'prior permission'], { soft: true, why: 'Mention PPR so they can match you to the booking.' }), ...detSoft];
+  await s.expect({ id: 'initial', initial: true, timeout: 240, cue: pending, items: initial,
+    model: `Carlisle Radio, {CS}, {TYPE}, ${where}, altitude 2500 feet, inbound to land, PPR, request airfield information` });
+  const tag = [];
+  let join = 'overhead';
+  if (ctx.blind) {
+    const again = await s.expect({ id: 'initial-2', optional: true, timeout: 40, items: [], model: 'Carlisle Radio, {CS}, radio check' });
+    s.note(again ? 'No answer from Carlisle Radio: it wasn’t staffed.' : 'No answer from Carlisle Radio and no second call.');
+    await s.expect({ id: 'blind', optional: true, timeout: 60, cue: 'Nobody is answering.', items: [P('Carlisle Traffic', ['traffic'])], model: 'Carlisle Traffic, {CS}, 6 miles out, joining overhead for runway 24, Carlisle' });
+    tag.push(P('Carlisle Traffic', ['carlisle traffic', 'traffic'], { soft: true, why: 'With no Air/Ground operator, start blind calls “Carlisle Traffic” and end them “Carlisle”.' }));
+  } else {
+    const r = await s.atc('{CALL}, Carlisle Radio, runway 24 left-hand, QFE 1009, QNH 1016, one aircraft in the circuit, how would you like to join?', {
+      readback: [P('runway 24', ['24'], { fix: 'runway 24' }), QNH(1009, 'QFE'),
+        P('how you will join', ['overhead', 'downwind', 'base', 'straight in', 'long final'], { soft: true,
+          why: 'An Air/Ground operator cannot tell you how to join: that is your decision, so say what it is.' })],
+      model: 'Runway 24 left-hand, QFE 1009, joining overhead, {CALL}' });
+    const said = (r && r.norm) || '';
+    join = /\b(straight in|long final)\b/.test(said) ? 'final' : /\bbase\b/.test(said) ? 'base' : /\bdownwind\b/.test(said) ? 'downwind' : 'overhead';
+  }
+  const ack = () => ctx.blind ? null : s.atc('{CALL}, roger');
+  if (join === 'overhead') {
+    await s.leg('Inbound to the overhead', 4, { early: true });
+    await s.expect({ id: 'overhead', cue: 'Overhead at 2000 ft QFE.', items: [...tag, P('overhead', ['overhead'])], model: ctx.blind ? 'Carlisle Traffic, {CALL}, overhead, joining for runway 24, Carlisle' : '{CALL}, overhead, descending deadside for runway 24' });
+    await ack();
+    await s.leg('Descending deadside', 1.2, { early: true });
+    await s.expect({ id: 'deadside', optional: true, timeout: 25, cue: 'Descending on the deadside.', items: [...tag, P('deadside', ['deadside', 'descending'])], model: '{CALL}, descending deadside, runway 24' });
+    await s.leg('Crosswind', 0.8, { early: true });
+  } else if (join === 'downwind') {
+    await s.leg('Joining downwind', 4, { early: true });
+  }
+  if (join === 'overhead' || join === 'downwind') {
+    await s.expect({ id: 'downwind', cue: 'Downwind for 24.', items: [...tag, P('downwind', ['downwind']), P('runway', ['24'], { soft: true })], model: '{CALL}, downwind 24' });
+    if (!ctx.blind) await s.atc(s.chance(0.5) ? '{CALL}, roger, one ahead, a Cessna 152 on base' : '{CALL}, roger, no reported traffic');
+    await s.leg('Base leg', 1.2, { early: true });
+  } else if (join === 'base') {
+    await s.leg('Joining on a long left base', 4, { early: true });
+    await s.expect({ id: 'base', cue: 'Long left base for 24.', items: [...tag, P('base', ['base']), P('runway', ['24'], { soft: true })], model: '{CALL}, long left base 24' });
+    await ack();
+    await s.leg('Turning final', 1, { early: true });
+  } else {
+    await s.leg('Straight in for 24', 5, { early: true });
+  }
+  await s.expect({ id: 'final', cue: 'Final 24.', items: [...tag, P('final', ['final']), P('runway', ['24'], { soft: true })], model: '{CALL}, final 24' });
+  if (!ctx.blind) {
+    await s.atc('{CALL}, roger, surface wind 230 degrees 8 knots');
+    await s.expect({ id: 'final-ack', optional: true, timeout: 8, items: [], model: 'Roger, {CALL}' });
+  }
+  await s.leg('Landing', 0.6, { early: true });
+  await s.expect({ id: 'vacated', cue: 'Landed and clear of the runway.', items: [...tag, P('vacated', ['vacated', 'clear of the runway', 'runway clear', 'clear of'])], model: '{CALL}, runway vacated, taxiing to the south apron via Foxtrot' });
+  if (!ctx.blind) await s.atc('{CALL}, roger, parking on the south apron');
+  s.end(ctx.blind ? 'Landed: blind calls' : `Landed: ${join === 'overhead' ? 'overhead join' : join === 'final' ? 'straight in' : `joined ${join}`}`);
+}
+
+const CARLISLE = [
+  ['Station', 'Carlisle Radio 123.605 is Air/Ground, staffed on weekdays when possible: information only, never a clearance.'],
+  ['If no answer', 'Make blind calls on the same frequency: “Carlisle Traffic … Carlisle”.'],
+  ['Joining', 'The operator will ask how you would like to join: it is your decision, so have one ready.'],
+  ['Circuit', 'Left-hand at 1000 ft QFE; overhead join at 2000 ft QFE. QFE is about QNH − 7. Runways 06/24 and 01/19.'],
+];
+
 export const carlisleArrival = {
   id: 'carlisle-arrival',
   title: 'Carlisle arrival',
-  subtitle: 'Carlisle Radio (Air/Ground), overhead join runway 24',
+  subtitle: 'Carlisle Radio (Air/Ground), inbound from the north',
   unit: 'Carlisle Radio',
   freq: '123.605',
   traffic: carlisleTraffic,
@@ -18,49 +87,70 @@ export const carlisleArrival = {
   briefing: ctx => [
     ['Aircraft', `${ctx.reg}, ${ctx.type}, 1 POB.`],
     ['Flight', 'Inbound to Carlisle from the north, 10 nm out at 2500 ft. PPR done by phone (01228 573641).'],
-    ['Station', 'Carlisle Radio is Air/Ground, staffed on weekdays when possible: information only, never a clearance.'],
-    ['If no answer', 'Make blind calls: “Carlisle Traffic … Carlisle”.'],
-    ['Circuit', 'Left-hand at 1000 ft QFE; overhead join at 2000 ft QFE. QFE is about QNH − 7.'],
+    ...CARLISLE,
+  ],
+  async run(s) {
+    await s.leg('10 nm north of Carlisle', 1.5, { cue: 'Call Carlisle Radio.' });
+    return arriveCarlisle(s, { from: 'kirkbride', where: '10 miles north, north of the city', position: ['north', 'miles', 'city'], pending: 'Make your initial call.' });
+  },
+};
+
+// From the south: up the Eden valley on a Basic Service from London Information, then over to Carlisle Radio.
+// Sector I of London Information (125.475) covers the whole route from Oxenhope until north of Penrith, where
+// the sector's edge turns north-east and leaves Carlisle to Scottish Information: UK AIP ENR 2.1 and ENR 6-32.
+// A FISO has no radar, so there is no squawk to set and no traffic to be vectored round: only what others report.
+export const carlisleSouth = {
+  id: 'carlisle-south',
+  title: 'Carlisle from the south',
+  subtitle: 'London Information up the Eden valley, then Carlisle Radio',
+  unit: 'London Information',
+  freq: '125.475',
+  traffic: (s, o) => /carlisle/i.test(s.ctx.unit) ? carlisleTraffic(s, o) : londonInfoTraffic(s, o),
+  warn: AG_WARN,
+  briefing: ctx => [
+    ['Aircraft', `${ctx.reg}, ${ctx.type}, 1 POB.`],
+    ['Flight', 'Oxenhope to Carlisle, VFR, about 75 nm. PPR to Carlisle done by phone (01228 573641).'],
+    ['Route', 'Skipton, Settle, Ribblehead, Kirkby Stephen, Appleby, Penrith: up the Eden valley.'],
+    ['Level', 'Altitude 3000 ft on the QNH over the Dales, where the tops are 2400 ft, descending to 2500 ft for Carlisle.'],
+    ['En route', 'London Information 125.475 for a Basic Service: sector I, from Oxenhope to north of Penrith.'],
+    ['Careful', 'A FISO has no radar. Traffic information is only what other pilots have reported: keep looking.', 'warn'],
+    ...CARLISLE,
   ],
   async run(s) {
     const { ctx } = s;
-    ctx.blind = s.chance(0.25);
-    await s.leg('10 nm north of Carlisle', 1.5, { cue: 'Call Carlisle Radio.' });
-    const det = details(ctx, { from: 'kirkbride', to: 'carlisle', position: ['north', 'miles', 'city'], altitude: 2500, request: ['land', 'landing', 'join', 'inbound', 'airfield information'] });
-    const detSoft = det.map(d => ({ ...d, hard: false, ask: undefined }));
-    const initial = [P('PPR', ['ppr', 'prior permission'], { soft: true, why: 'Mention PPR so they can match you to the booking.' }), ...detSoft];
-    await s.expect({ id: 'initial', initial: true, timeout: 240, cue: 'Make your initial call.', items: initial,
-      model: 'Carlisle Radio, {CS}, {TYPE}, 10 miles north, north of the city, altitude 2500 feet, inbound to land, PPR, request airfield information' });
-    const tag = [];
-    if (ctx.blind) {
-      const again = await s.expect({ id: 'initial-2', optional: true, timeout: 40, items: [], model: 'Carlisle Radio, {CS}, radio check' });
-      s.note(again ? 'No answer from Carlisle Radio: it wasn’t staffed.' : 'No answer from Carlisle Radio and no second call.');
-      await s.expect({ id: 'blind', optional: true, timeout: 60, cue: 'Nobody is answering.', items: [P('Carlisle Traffic', ['traffic'])], model: 'Carlisle Traffic, {CS}, 6 miles north, joining overhead for runway 24, Carlisle' });
-      tag.push(P('Carlisle Traffic', ['carlisle traffic', 'traffic'], { soft: true, why: 'With no Air/Ground operator, start blind calls “Carlisle Traffic” and end them “Carlisle”.' }));
-    } else {
-      await s.atc('{CALL}, Carlisle Radio, runway 24 left-hand, QFE 1009, QNH 1016, one aircraft in the circuit', {
-        readback: [P('runway 24', ['24'], { fix: 'runway 24' }), QNH(1009, 'QFE')],
-        model: 'Runway 24 left-hand, QFE 1009, joining overhead, {CALL}' });
+    await s.leg('Climbing out of Oxenhope', 3, { cue: 'Call London Information for a Basic Service.', early: true });
+    const det = details(ctx, { from: 'oxenhope', to: 'carlisle', position: ['skipton', 'miles', 'overhead', 'oxenhope'], altitude: 3000, request: ['basic service'] });
+    await initialCall(s, { unitName: 'London Information', det,
+      requestItems: [P('request basic service', ['basic service'], { soft: true, why: 'Ask for the service by name on first contact.' })],
+      model: 'London Information, {CS}, request Basic Service',
+      detailsModel: '{CS}, {TYPE}, Oxenhope to Carlisle, 3 miles south of Skipton, altitude 3000 feet, QNH 1016, VFR, routing Settle, Kirkby Stephen, Penrith' });
+    await s.atc('{CALL}, London Information, Basic Service, report Kirkby Stephen', { readback: [BASIC(), WILCO()], model: 'Basic Service, wilco, {CALL}' });
+    await s.leg('Skipton to Settle', 12, { cue: 'Long leg. Keep listening.' });
+    if (s.chance(0.6)) {
+      await s.atc('{CALL}, London Information, traffic information: a PA28 reported overhead Kirkby Stephen at 3000 feet, southbound', {
+        readback: [P('acknowledged', ['looking', 'roger', 'traffic in sight', 'in sight', 'negative contact'], { why: 'Acknowledge it: “looking”, or “roger” if it is no factor.' })],
+        model: 'Looking, {CALL}' });
     }
-    const ack = () => ctx.blind ? null : s.atc('{CALL}, roger');
-    await s.leg('Inbound to the overhead', 4, { early: true });
-    await s.expect({ id: 'overhead', cue: 'Overhead at 2000 ft QFE.', items: [...tag, P('overhead', ['overhead'])], model: ctx.blind ? 'Carlisle Traffic, {CALL}, overhead, joining for runway 24, Carlisle' : '{CALL}, overhead, descending deadside for runway 24' });
-    await ack();
-    await s.leg('Descending deadside', 1.2, { early: true });
-    await s.expect({ id: 'deadside', optional: true, timeout: 25, cue: 'Descending on the deadside.', items: [...tag, P('deadside', ['deadside', 'descending'])], model: '{CALL}, descending deadside, runway 24' });
-    await s.leg('Crosswind', 0.8, { early: true });
-    await s.expect({ id: 'downwind', cue: 'Downwind for 24.', items: [...tag, P('downwind', ['downwind']), P('runway', ['24'], { soft: true })], model: '{CALL}, downwind 24' });
-    if (!ctx.blind) await s.atc(s.chance(0.5) ? '{CALL}, roger, one ahead, a Cessna 152 on base' : '{CALL}, roger, no reported traffic');
-    await s.leg('Base leg', 1.2, { early: true });
-    await s.expect({ id: 'final', cue: 'Final 24.', items: [...tag, P('final', ['final']), P('runway', ['24'], { soft: true })], model: '{CALL}, final 24' });
-    if (!ctx.blind) {
-      await s.atc('{CALL}, roger, surface wind 230 degrees 8 knots');
-      await s.expect({ id: 'final-ack', optional: true, timeout: 8, items: [], model: 'Roger, {CALL}' });
-    }
-    await s.leg('Landing', 0.6, { early: true });
-    await s.expect({ id: 'vacated', cue: 'Landed and clear of the runway.', items: [...tag, P('vacated', ['vacated', 'clear of the runway', 'runway clear', 'clear of'])], model: '{CALL}, runway vacated, taxiing to the south apron via Foxtrot' });
-    if (!ctx.blind) await s.atc('{CALL}, roger, parking on the south apron');
-    s.end(ctx.blind ? 'Landed: blind calls' : 'Landed');
+    await s.leg('Settle to Ribblehead', 8);
+    await s.leg('Ribblehead to Kirkby Stephen', 12, { early: true });
+    await s.expect({ id: 'kirkby-stephen', cue: 'Overhead Kirkby Stephen.', nudge: '{CALL}, London Information, report your position',
+      items: [P('position', ['kirkby stephen', 'kirkby', 'kirby stephen']), P('altitude', ['feet', 'altitude'], { soft: true })],
+      model: '{CALL}, Kirkby Stephen, altitude 3000 feet, next Penrith' });
+    await s.atc('{CALL}, roger');
+    await s.leg('Kirkby Stephen to Appleby', 8);
+    await s.leg('Appleby to Penrith', 11, { early: true });
+    const asked = await s.expect({ id: 'qsy', cue: 'Past Penrith, about 15 miles from Carlisle. Change to Carlisle Radio.',
+      nudge: '{CALL}, London Information, say intentions',
+      items: [P('changing frequency', ['changing', 'frequency', 'carlisle'])],
+      model: '{CALL}, request frequency change to Carlisle Radio 123.605' });
+    const f = asked && (asked.norm.match(/\b12[0-9]\.\d+\b/) || [])[0];
+    if (f && f !== '123.605') s.note(`Carlisle Radio is 123.605, and you said ${f}.`);
+    await s.atc(asked ? '{CALL}, frequency change approved' : '{CALL}, Basic Service terminated');
+    // A new station: a new frequency, a new voice, and the full callsign again until they shorten it.
+    ctx.unit = 'Carlisle Radio'; ctx.abbreviated = false;
+    s.setRadio({ unit: 'Carlisle Radio', freq: '123.605' });
+    await s.leg('Penrith towards Carlisle', 5, { cue: 'Call Carlisle Radio.', early: true });
+    return arriveCarlisle(s, { from: 'oxenhope', where: '10 miles south, north of Penrith', position: ['south', 'miles', 'penrith'] });
   },
 };
 

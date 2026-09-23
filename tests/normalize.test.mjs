@@ -279,3 +279,12 @@ test('the same clearance read back three times now passes every time', () => {
   // ...without reading anything into ordinary English
   for (const t of ['they are the best', 'not of a doubt', 'glare of the sun', 'unhappy']) assert.equal(normalize(t), t);
 });
+
+test('parallel runways are spoken digit by digit and then the side', () => {
+  assert.equal(speakable('runway 25L left-hand, QFE 1015'), 'runway two five left left-hand, QFE one zero one five');
+  assert.equal(speakable('final 29L'), 'final two niner left');
+  assert.equal(speakable('runway 05R'), 'runway zero five right');
+  assert.equal(speakable('runway 24'), 'runway two four', 'a single runway is unchanged');
+  // ...and a pilot saying it either way is heard as the same runway
+  assert.equal(normalize('runway two five left'), 'runway 25 left');
+});

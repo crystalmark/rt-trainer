@@ -269,6 +269,8 @@ export function speakable(text) {
     return v % 100 === 0 ? `${SAY_DIGIT[h] === 'niner' ? 'nine' : SAY_DIGIT[h]} hundred feet` : n + ' feet';
   });
   s = s.replace(/\bsquawk (\d)000\b/gi, (_, d) => `squawk ${SAY_DIGIT[+d]} thousand`);
+  // Parallel runways: "25L" is "two five left", never "twenty-five L".
+  s = s.replace(/\b(\d{2})([LRC])\b/g, (_, n, side) => `${n} ${{ L: 'left', R: 'right', C: 'centre' }[side]}`);
   s = s.replace(/\b\d+\.\d+\b/g, m => m.split('').map(c => c === '.' ? 'decimal' : SAY_DIGIT[+c]).join(' '));
   s = s.replace(/\b\d{2,}\b/g, m => m.split('').map(c => SAY_DIGIT[+c]).join(' '));
   s = s.replace(/\b\d\b/g, m => ({ '9': 'niner' }[m] || ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'][+m]));

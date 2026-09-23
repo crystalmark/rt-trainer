@@ -7,7 +7,7 @@ const FILES = [
   'js/debrief.js', 'js/heard.js', 'js/config.js', 'js/geo.js', 'js/route.js', 'js/map.js', 'js/data/vrps.js', 'js/areas/index.js', 'js/areas/leeds.js', 'js/areas/edinburgh.js', 'js/areas/manchester.js',
   'js/scenarios/index.js', 'js/scenarios/common.js', 'js/scenarios/leeds-transit.js', 'js/scenarios/leeds-basic.js',
   'js/scenarios/edinburgh-transit.js', 'js/scenarios/carlisle.js', 'js/scenarios/scottish-info.js', 'js/scenarios/custom.js',
-  'js/scenarios/listen.js',
+  'js/scenarios/listen.js', 'js/scenarios/forth-bridges.js',
 ];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())));
 // Caches belong to the whole origin, and crystalmark.co.uk also hosts Flight Log and Pollyglot: only clear our own.

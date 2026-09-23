@@ -333,3 +333,34 @@ test('a second press of skip puts it back to real time', async () => {
   engine.stop();
   await flight;
 });
+
+// At an Air/Ground field nobody can tell you how to join, so the operator asks and your answer is what you fly.
+test('Carlisle Radio asks how you would like to join, and flies the join you choose', async () => {
+  const scenario = SCENARIOS.find(x => x.id === 'carlisle-arrival');
+  for (const [answer, ids, summary] of [
+    ['joining overhead', ['overhead', 'downwind', 'final'], /overhead join/],
+    ['joining downwind', ['downwind', 'final'], /joined downwind/],
+    ['joining on a long left base', ['base', 'final'], /joined base/],
+    ['straight in', ['final'], /straight in/],
+  ]) {
+    let staffed = true;
+    const pilot = engine => {
+      const perfect = perfectPilot(engine);
+      return ev => {
+        if (ev.kind === 'awaiting' && ev.waitKind === 'readback' && /how would you like to join/.test(ev.atcText || '')) {
+          sendWhenClear(engine, `runway 24, QFE 1009, ${answer}, G-IA`); return;
+        }
+        perfect(ev);
+      };
+    };
+    let events;
+    for (let seed = 1; seed < 30; seed++) {                 // a quarter of the time nobody is there: find a staffed one
+      ({ events } = await run(scenario, PROFILES[1], seed, { pilot, settings: { trafficDensity: 'quiet' } }));
+      if (events.some(e => e.type === 'atc' && /how would you like to join/.test(e.text))) break;
+    }
+    const calls = events.filter(e => e.type === 'call').map(e => e.id);
+    for (const id of ids) assert.ok(calls.includes(id), `${answer}: no ${id} call in ${calls.join(', ')}`);
+    if (!ids.includes('overhead')) assert.ok(!calls.includes('overhead'), `${answer}: flew the overhead anyway`);
+    assert.match(events.at(-1).summary, summary);
+  }
+});

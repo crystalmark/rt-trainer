@@ -161,6 +161,23 @@ export function scottishTraffic(s, { similar }) {
   return pick(s, options);
 }
 
+// London Information over northern England (sector I, 125.475): a FISO with no radar, so pilots give their own
+// positions and the controller passes on what others have reported rather than what a screen shows.
+export function londonInfoTraffic(s, { similar }) {
+  const qnh = s.ctx.qnh || 1016;
+  const ga = pick(s, GA); const gab = abbr(ga);
+  const options = [
+    [[ga, `London Information, ${ga}, request Basic Service`], ['atc', `${ga}, London Information, pass your message`],
+     [ga, `${ga}, ${pick(s, GA_TYPES)}, Sherburn to Kirkbride, overhead Kirkby Stephen, altitude 3500 feet, QNH ${qnh}, VFR`],
+     ['atc', `${gab}, Basic Service`], [ga, `Basic Service, ${gab}`]],
+    [[ga, `${gab}, overhead Appleby, altitude 3000 feet, next Penrith`], ['atc', `${gab}, roger`]],
+    [['atc', `${gab}, London Information, report your position`], [ga, `${gab}, 5 miles south of Penrith, altitude 2500 feet`], ['atc', `${gab}, roger`]],
+    [[ga, `${gab}, changing to Carlisle Radio, 123.605`], ['atc', `${gab}, roger`]],
+    [['atc', `${similar}, London Information, report your position`, { similar }], [similar, `${similar}, overhead Settle, altitude 3000 feet`], ['atc', `${similar}, roger`]],
+  ];
+  return pick(s, options);
+}
+
 export function carlisleTraffic(s) {
   const options = [
     [['G-BOTE', 'G-TE, downwind 24, touch and go'], ['atc', 'G-TE, roger']],
