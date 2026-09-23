@@ -94,7 +94,7 @@ export default {
   facts: [
     'Leeds Radar 134.580 (also listed as Leeds Approach). Leeds Information (ATIS) 118.030.',
     'The CTR is Class D, surface to FL85. CTA 1 (south-east) and CTA 2 (south-west) start at 2500 ft, CTA 3 (west and south) at 3000 ft.',
-    'Monitoring 134.580 near the zone without a service: listening squawk 2677.',
+    'Monitoring 134.580 near Leeds Bradford without a service: listening squawk 2677.',
     'Transition altitude in the CTR/CTA is 5000 ft.',
   ],
 };

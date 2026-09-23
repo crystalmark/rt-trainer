@@ -157,9 +157,13 @@ export function carlisleTraffic(s) {
  * controller skips straight on, and the debrief notes it.
  */
 export async function initialCall(s, { unitName, requestItems = [], det, model, detailsModel }) {
+  // A first call is the station, your callsign and your request: that is all that is scored here. Holding the
+  // details back is correct RT, not an omission — the controller asks for them with "pass your message" when
+  // they have time, and that call is where they count. A pilot who gives everything at once is marked on it.
+  const gaveAll = r => ['position', 'altitude'].every(l => r.items.some(i => i.label === l && i.matched));
   const init = await s.expect({ id: 'initial', initial: true, timeout: 240, cue: 'Make your initial call.',
-    items: [...requestItems, ...det.map(d => ({ ...d, hard: false, ask: undefined }))], model });
-  const gave = init && ['position', 'altitude'].every(l => init.items.some(i => i.label === l && i.matched));
+    items: requestItems, extras: det.map(d => ({ ...d, hard: false, ask: undefined })), countExtras: gaveAll, model });
+  const gave = init && gaveAll(init);
   if (gave) {
     s.note('Full details on first contact: fine on a quiet frequency. On a busy one, make a short initial call and wait for “pass your message”.');
     return init;

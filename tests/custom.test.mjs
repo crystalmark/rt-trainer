@@ -257,3 +257,28 @@ test('an orbit has to be flown, not just read back', async () => {
   }
   assert.ok(found, 'an orbit came up within 40 seeds');
 });
+
+// "Zone" is the control zone and nothing else. Telling a pilot to ask for a "zone transit" when the route only
+// crosses a CTA teaches the loose habit that gets them corrected on the radio — and it is the same word the
+// refusal exchange marks you down for.
+test('“zone” is used only when the control zone is what you are crossing', async () => {
+  const ctx = { reg: 'G-CZIA', abbr: 'G-IA', type: 'QuikR microlight', transponder: true, speedKt: 65 };
+  const cta = scenarioFor('Halifax to Garforth via Chain Bar at 2800 ft');
+  const ctr = scenarioFor('Skipton to Wetherby via Salts Mill and Eccup Reservoir at 2800 ft');
+  assert.equal(cta.plan.transit.intoZone, false, 'Chain Bar at 2800 ft crosses a CTA, not the CTR');
+  assert.equal(ctr.plan.transit.intoZone, true);
+
+  const brief = s => s.briefing(ctx).map(l => l[1]).join(' ');
+  assert.ok(!/\bzones?\b/i.test(brief(cta)), `CTA briefing: ${(brief(cta).match(/[^.]*\bzone\b[^.]*/) || [])[0]}`);
+  assert.match(brief(cta), /transit through their controlled airspace/);
+  assert.match(brief(ctr), /a zone transit/);
+
+  const model = async scenario => {
+    const events = await fly(scenario, PROFILES[1], 4, { settings: { trafficDensity: 'quiet', refusalBias: -1 } });
+    return events.find(e => e.type === 'call' && e.id === 'initial').model;
+  };
+  assert.match(await model(ctr), /request Basic Service and zone transit/);
+  const m = await model(cta);
+  assert.match(m, /request Basic Service and transit through your controlled airspace/);
+  assert.ok(!/\bzone\b/i.test(m), m);
+});

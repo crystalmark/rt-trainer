@@ -12,6 +12,8 @@ const said = p => (p.hear && p.hear[0]) || p.name.toLowerCase();
 const named = (p, fix, o = {}) => P(p.name, p.hear || [said(p)], { fix, ...o });
 const octal = rng => String(Math.floor(rng() * 8));
 const cap = t => t[0].toUpperCase() + t.slice(1);
+/** What you are asking to cross: the zone only when it really is the CTR. */
+const transitWords = T => (T.intoZone ? 'zone transit' : 'transit through your controlled airspace');
 const TRAFFIC = ['a Cessna 172', 'a PA28', 'a C42 microlight', 'a helicopter', 'a Robin', 'a glider'];
 const HEADINGS = ['northbound', 'southbound', 'eastbound', 'westbound'];
 const SIDES = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
@@ -52,7 +54,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
       ['Level', `Altitude ${altitude} ft, QNH ${q0}.`],
       T ? ['Transit', `You reach ${T.entryVolume.name} (Class ${T.entryVolume.cls}, ${base(T.entryVolume)}) after ${Math.round(T.sIn)} nm, and leave controlled airspace to the ${T.exitSide} after ${Math.round(T.sOut)} nm.`]
         : ['Airspace', `At ${altitude} ft the route stays outside controlled airspace, ${miles(planned.closest.d)} from ${planned.closest.volume.name} at the closest.`],
-      ['Ask for', T ? `A Basic Service and a zone transit from ${area.unit}.` : `A Basic Service from ${area.unit}.`],
+      ['Ask for', T ? `A Basic Service from ${area.unit}, and ${T.intoZone ? 'a zone transit' : 'a transit through their controlled airspace'}.` : `A Basic Service from ${area.unit}.`],
       ...planned.under.map(u => ['Careful', `You pass under ${u.volume.name}: its base is ${u.volume.base} ft, only ${u.gap} ft above you.`, 'warn']),
       ...planned.warnings.map(w => ['Careful', w, 'warn']),
       ['VRPs', `${vrps}. They're reporting references: pass near them rather than overhead.`],
@@ -137,14 +139,17 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     await s.reach(T ? Math.max(0.5, T.sIn - 10) : Math.min(1.5, P0.total / 4), { label: `${area.unit} ${area.freq}`,
       cue: T ? `Listen to the frequency, then call ${area.unit} when there is a gap.` : `Call ${area.unit} for a Basic Service.` });
     const { ctx } = s, here = whereIs(area, s.position()), via = T && T.via && T.via.place;
-    const request = T ? `request Basic Service and zone transit${via ? ` via ${via.name}` : ''}` : 'request Basic Service';
+    // "Zone" means the control zone and nothing else. Ask for a zone transit only when the CTR is what you are
+    // crossing; for a CTA it is controlled airspace, and calling that "the zone" is how pilots come unstuck.
+    const request = T ? `request Basic Service and ${transitWords(T)}` : 'request Basic Service';
+    const asked = request + (via ? ` via ${via.name}` : '');           // the routing belongs in the details call
     const det = details(ctx, { from: said(first), to: said(destination(P0)), position: [...here.hear, 'miles', 'overhead'], altitude,
       request: T ? ['transit', 'zone transit', 'crossing', 'cross'] : ['basic service'] });
     const init = await initialCall(s, { unitName: area.unit, det,
       requestItems: T ? [P('request', ['transit', 'basic service', 'zone', 'request'], { soft: true, why: 'State your request on first contact.' })]
         : [P('request basic service', ['basic service'], { soft: true, why: 'Ask for the service by name on first contact.' })],
       model: `${area.unit}, {CS}, ${request}`,
-      detailsModel: `{CS}, {TYPE}, ${first.name} to ${destination(P0).name}, ${here.text}, altitude ${altitude} feet, QNH ${q0}, VFR, ${ctx.transponder ? '' : 'no transponder, '}${request}` });
+      detailsModel: `{CS}, {TYPE}, ${first.name} to ${destination(P0).name}, ${here.text}, altitude ${altitude} feet, QNH ${q0}, VFR, ${ctx.transponder ? '' : 'no transponder, '}${asked}` });
     await service(s, P0, { noXpdrSaid: !!init && init.items.some(i => i.key === 'noxpdr' && i.matched) });
     return T ? approach(s, P0) : outside(s, P0);
   }

@@ -120,8 +120,24 @@ export class Engine {
     let release;
     this.channel = new Promise(r => { release = r; });
     await prev;
+    await this.holdForPilot();
     this.channelLocked = true;
     try { return await fn(); } finally { this.channelLocked = false; release(); }
+  }
+
+  /**
+   * Nobody transmits over the pilot. A real controller cannot hear you and will talk straight over the top —
+   * but then they never heard the call they would be answering, so simulating that only produces a reply to a
+   * transmission nobody received. The channel waits for the PTT to come up instead. Capped, for a stuck button.
+   */
+  async holdForPilot(limit = 15000) {
+    const until = this.now() + limit;
+    while (this.running && this.keyed && this.now() < until) await this.sleep(200, false);
+  }
+
+  /** The frequency is the pilot's: they are keyed, or the controller has just spoken to them and is waiting. */
+  pilotsTurn() {
+    return this.keyed || this.now() < this.trafficHoldUntil || !!(this.waiter && this.lastWaitKind === 'readback');
   }
 
   async transmit(speaker, text, meta = {}) {
@@ -129,6 +145,9 @@ export class Engine {
     this.log(speaker === 'atc' ? 'atc' : 'traffic', { speaker, text: display, ...meta });
     this.emit('radio', { speaker, text: display, meta });
     const res = await this.radio.say(speaker, display, this.toSpeech(display), meta);
+    // A call to the pilot buys them a gap to answer in, measured from when we stop talking. Arming it before a
+    // long clearance (as atc() does, to keep the frequency clear while we speak) leaves them nothing.
+    if (meta.toPilot) this.trafficHoldUntil = Math.max(this.trafficHoldUntil, this.now() + 12000);
     return { display, interrupted: !!(res && res.interrupted) };
   }
 
@@ -148,6 +167,8 @@ export class Engine {
   pilotTransmission(text, meta = {}) {
     this.keyed = false;
     if (!this.running) return;
+    // The gap was theirs and they have used it: the frequency goes back to everyone, after their own tail.
+    this.trafficHoldUntil = Math.min(this.trafficHoldUntil, this.now() + 2000);
     text = String(text || '').trim();
     const tx = { text, at: this.now(), latency: this.lastToPilotAt ? (this.keyDownAt || this.now()) - this.lastToPilotAt : null, ...meta };
     if (this.blocked) {
@@ -471,7 +492,10 @@ export class Engine {
     }
   }
 
-  async expect({ id, cue, items = [], timeout, nudge, optional = false, initial = false, model = null, afterAtc = false, warn = [] }) {
+  // `extras` are items worth hearing here but not required: they help pick the best transcript and come back
+  // in the result, but they are only scored and put in the debrief when countExtras(r) says the pilot chose to
+  // give them. That is how a short initial call stays correct while a full one is still marked.
+  async expect({ id, cue, items = [], extras = [], countExtras = null, timeout, nudge, optional = false, initial = false, model = null, afterAtc = false, warn = [] }) {
     if (cue) { this.emit('cue', { text: cue }); this.log('cue', { text: cue }); }
     this.emit('awaiting', { waitKind: 'call', id, spec: items, cue });
     this.lastWaitKind = 'call'; this.currentSpec = items;
@@ -489,10 +513,12 @@ export class Engine {
         await this.atc(`{CALL}, I say again, ${stripCallsign(this.lastToPilot)}`);
         continue;
       }
-      const { text, r } = this.bestMatch(tx, items, 'call');
+      const { text, r } = this.bestMatch(tx, extras.length ? [...items, ...extras] : items, 'call');
       for (const w of warn.concat(this.scenario.warn || [])) if (w.re.test(text.toLowerCase())) r.fillers.push(w.why);
       if (!initial && r.hardRatio < 0.35 && looksLikeRequest(text) && this.claude) throw new OffScript(tx);
-      this.log('call', { id, text, heard: text === tx.text ? null : tx.text, latency: tx.latency, result: summarise(r), model: model ? this.fill(model) : null });
+      const counted = !extras.length || (countExtras && countExtras(r));
+      const scored = counted ? r : match(text, items, this.ctx, { kind: 'call' });
+      this.log('call', { id, text, heard: text === tx.text ? null : tx.text, latency: tx.latency, result: summarise(scored), model: model ? this.fill(model) : null });
       if (!r.callsign) {
         await this.atc(initial ? 'Station calling {UNIT}, say again your callsign' : 'Station calling, say again callsign');
         continue;
@@ -552,10 +578,11 @@ export class Engine {
       while (this.running) {
         const [a, b] = DENSITY_GAP[this.settings.trafficDensity] || DENSITY_GAP.normal;
         await this.sleep(this.rand(a, b) * 1000, false);
-        while (this.running && (this.now() < this.trafficHoldUntil || this.waiter && this.lastWaitKind === 'readback' || this.keyed)) await this.sleep(1000, false);
+        while (this.running && this.pilotsTurn()) await this.sleep(1000, false);
         const ex = gen(this.api(), { similar: this.similarAbbr(), rng: this.rng });
         if (!ex || !ex.length) continue;
         await this.withChannel(async () => {
+          if (this.pilotsTurn()) return;         // the controller spoke to the pilot while we queued: leave the gap
           this.exchangeActive = true;
           try {
             for (let i = 0; i < ex.length; i++) {

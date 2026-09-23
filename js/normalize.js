@@ -184,8 +184,35 @@ export function findCallsign(toks, reg) {
     else if (r.letters.endsWith(abbr.slice(1)) && r.letters.length >= 2) form = 'partial';
     if (form && (!best || rank(form) > rank(best.form))) best = { form, start: r.start, end: r.end };
   }
-  return best;
+  if (best && best.form === 'full') return best;
+  return spelled(toks, full) || best;
   function rank(f) { return { full: 3, abbr: 2, partial: 1 }[f]; }
+}
+
+/**
+ * A second look, for when speech recognition turned one of the letters into an ordinary word: "golf charlie
+ * zulu author" or "golf charlie zulu in the alpha" for G-CZIA. We know the registration, so a word may stand
+ * in for one of the letters still to come only when it begins with that letter ("Author" for "Alpha", "India"
+ * for the "in" of "in the"); a word that fits nothing is a stray the recogniser invented, and we allow a
+ * couple of those. A single letter that is not the next one is a different aircraft, and stops the scan — so
+ * G-CZIH is never read as G-CZIA. At least half the letters must still have arrived as letters.
+ */
+function spelled(toks, full) {
+  for (let i = 0; i < toks.length; i++) {
+    if (toks[i] !== full[0]) continue;
+    let k = 1, j = i + 1, heard = 1, slack = 2;
+    while (k < full.length && j < toks.length && j - i <= full.length + 3) {
+      const t = toks[j];
+      if (t === full[k]) { k++; j++; heard++; continue; }
+      if (t.length === 1) break;                              // a letter we did not expect: not this aircraft
+      const at = full.indexOf(t[0], k);
+      if (at >= 0) { k = at + 1; j++; continue; }              // the word stands in for that letter
+      if (slack) { slack--; j++; continue; }                   // a stray word between the letters
+      break;
+    }
+    if (k === full.length && heard * 2 >= full.length) return { form: 'full', start: i, end: j - 1 };
+  }
+  return null;
 }
 
 /**
@@ -196,6 +223,7 @@ export function findCallsign(toks, reg) {
 const SAY_DIGIT = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'niner'];
 export function speakable(text) {
   let s = String(text);
+  s = s.replace(/\bcallsigns?\b/gi, m => (m.endsWith('s') ? 'call signs' : 'call sign'));   // said as one word it comes out "calsigen"
   s = s.replace(/\b(\d{1,2})(000|500|[1-9]00)\s+feet\b/g, (_, th, rest) => {
     const t = Number(th), h = Number(rest) / 100;
     const words = [];

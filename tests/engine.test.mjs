@@ -215,3 +215,67 @@ test('every briefing is a list of labelled items, one fact each', () => {
     assert.ok(labels.has('Aircraft') || s.listen, `${s.id}: no aircraft line`);
   }
 });
+
+// Holding the details back until "pass your message" is correct RT, not six omissions. The debrief used to
+// list every detail as something to add, on the one call where it is right to leave them out.
+test('a short initial call is correct: the details count when ATC asks for them, not before', async () => {
+  const scenario = SCENARIOS.find(s => s.id === 'leeds-transit');
+  const short = { initial: e => `Leeds Radar, ${e.ctx.reg}, request Basic Service and zone transit` };
+  const { events } = await run(scenario, PROFILES[1], 5, { settings: { refusalBias: -1, trafficDensity: 'quiet' }, override: short });
+  const init = events.find(e => e.type === 'call' && e.id === 'initial');
+  assert.deepEqual(init.result.softMissing, [], 'nothing is missing from a short first call');
+  assert.ok(init.result.score >= 90, `short first call scored only ${init.result.score}`);
+  assert.ok(events.some(e => e.type === 'call' && e.id === 'details'), 'ATC asks for the details');
+  const issues = computeDebrief(events).issues;
+  assert.ok(!issues.some(i => /add to your calls/i.test(i.title)), JSON.stringify(issues.find(i => /add to your calls/i.test(i.title))));
+});
+
+test('...but a pilot who gives it all at once is still marked on it', async () => {
+  const scenario = SCENARIOS.find(s => s.id === 'leeds-transit');
+  const all = { initial: e => `Leeds Radar, ${e.ctx.reg}, microlight, Kirkbride to Sherburn, ` +
+    '3 miles south of Skipton, altitude 2800 feet, request zone transit' };   // no QNH, no VFR
+  const { events } = await run(scenario, PROFILES[1], 5, { settings: { refusalBias: -1, trafficDensity: 'quiet' }, override: all });
+  const init = events.find(e => e.type === 'call' && e.id === 'initial');
+  assert.ok(!events.some(e => e.id === 'details'), 'ATC does not ask for the details again');
+  assert.ok(events.some(e => e.type === 'note' && /Full details on first contact/.test(e.text)));
+  const missed = init.result.softMissing.map(i => i.label);
+  assert.ok(missed.includes('pressure setting') && missed.includes('flight rules'), missed.join(', '));
+});
+
+// Keying up used to be no protection: the script transmitted over the pilot, and then answered a call it could
+// never have heard. Nothing goes out while the PTT is down.
+test('nobody transmits over the pilot', async () => {
+  const clock = fakeClock(20);                      // near real time, because the hold has a 15 s cap
+  const radio = fakeRadio(clock);
+  const scenario = {
+    id: 'ptt-hold', title: 'PTT', unit: 'Leeds Radar', freq: '134.580',
+    briefing: () => [['Aircraft', 'G-CZIA']],
+    async run(s) { await s.atc('{CALL}, report your position'); await s.pause(600); },
+  };
+  const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(2), settings: { trafficDensity: 'quiet' } });
+  engine.pilotKeyDown();
+  const flight = engine.start();
+  await new Promise(r => setTimeout(r, 250));
+  assert.equal(radio.lines.length, 0, `spoke over the pilot: ${JSON.stringify(radio.lines)}`);
+  engine.pilotTransmission('G-CZIA, overhead Ilkley');
+  await new Promise(r => setTimeout(r, 250));
+  assert.equal(radio.lines.length, 1, 'and transmits as soon as the PTT comes up');
+  engine.stop();
+  await flight;
+});
+
+// The controller speaks to you and waits: that gap is yours. Traffic that had already decided to transmit used
+// to queue on the channel and take it the instant the controller stopped.
+test('traffic does not take the gap the controller left for you', async () => {
+  const scenario = SCENARIOS.find(s => s.id === 'leeds-transit');
+  const { events } = await run(scenario, PROFILES[1], 7, { settings: { trafficDensity: 'busy', refusalBias: -1 } });
+  const toPilot = events.filter(e => e.type === 'atc' && e.toPilot);
+  const others = events.filter(e => e.traffic);
+  assert.ok(toPilot.length > 3 && others.length > 3, 'the flight had both');
+  for (const a of toPilot) {                                   // event times are in seconds
+    const reply = events.find(e => e.type === 'pilot' && e.t >= a.t);
+    const end = Math.min(reply ? reply.t : Infinity, a.t + 12);
+    const jumped = others.find(o => o.t >= a.t && o.t < end);
+    assert.ok(!jumped, `“${jumped && jumped.text}” came ${jumped && jumped.t - a.t} s after “${a.text}”`);
+  }
+});

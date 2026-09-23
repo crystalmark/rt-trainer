@@ -91,3 +91,23 @@ test('“resume own navigation” still beats “routing”', () => {
   assert.equal(normalize('routine own navigation to Eccup'), 'resume own navigation to eccup');
   assert.equal(normalize('routine north of the zone'), 'routing north of the zone');
 });
+
+// The recogniser keeps turning one phonetic word into an ordinary English one: Alpha as "author", India as
+// "in the". We know the registration, so a word standing where a letter should be is read as that letter —
+// but only when it begins with the same letter, and never over a letter belonging to another aircraft.
+test('a callsign survives one of its letters being heard as a word', () => {
+  const form = (t, reg = 'G-CZIA') => (findCallsign(tokens(t), reg) || {}).form || null;
+  assert.equal(form('golf Charlie Zulu author'), 'full');
+  assert.equal(form('golf Charlie Zulu in the alpha'), 'full');
+  assert.equal(form('golf Charlie Zulu India author, requesting basic service'), 'full');
+  assert.equal(form('golf Charlie Zulu India alpha'), 'full');
+  assert.equal(form('Leeds Radar, golf Charlie Zulu author, request basic service and transit'), 'full');
+
+  // ...and it stays honest about everything else
+  assert.equal(form('golf India alpha'), 'abbr', 'an abbreviated callsign is not promoted');
+  assert.equal(form('golf Charlie Zulu India hotel'), null, 'G-CZIH is a different aircraft');
+  assert.equal(form('golf Charlie delta foxtrot kilo'), null);
+  assert.equal(form('golf Charlie Zulu requesting basic service and transit'), null, 'the letters simply are not there');
+  assert.equal(form('golf author lima hotel papa', 'G-CLHP'), 'partial', '“author” cannot stand in for Charlie');
+  assert.equal(form('golf Charlie lima hotel papa', 'G-CLHP'), 'full');
+});
