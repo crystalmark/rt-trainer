@@ -4,6 +4,7 @@ import { normalize, findCallsign, tokens, speakable } from '../js/normalize.js';
 import { match, hasAny } from '../js/matcher.js';
 import { AREAS } from '../js/areas/index.js';
 import { BASIC, SQUAWK, ROS } from '../js/scenarios/common.js';
+import { rowsFrom, stats, append, load, clear } from '../js/heard.js';
 
 test('numbers in all the ways speech recognition returns them', () => {
   assert.equal(normalize('QNH one zero one seven'), 'qnh 1017');
@@ -153,4 +154,48 @@ test('a clearance readback: the acronyms recovered, the number left alone', () =
   assert.match(match('qnh ten oh five', [], {}).fillers[0], /Every digit has its own word/);
 
   assert.equal(normalize('clear of the zone'), 'clear of the zone', '"clear of" is not a clearance');
+});
+
+// The speech-recognition log: the point of it is to tell a fold that rescued a transmission from one that fired
+// and still wasn't enough, because only the second kind says the tail is long.
+test('the speech recognition log separates rescued from still-failing', () => {
+  const events = [
+    { type: 'readback', t: 40, text: 'basic service cork 5626 remain outside control airspace golf India alpha',
+      result: { score: 100, missing: [], substitutions: [] } },
+    { type: 'readback', t: 70, text: 'clear to enter the Leeds controlled zone q&h 10005 the dfr not above 2,000 feet Wilco golf India alpha',
+      result: { score: 70, missing: ['QNH 1005'], substitutions: [] } },
+    { type: 'call', t: 90, text: 'golf Charlie Zulu author requesting transit',
+      heard: 'golf Charlie Zulu author requesting transit', alts: ['a', 'b'],
+      result: { score: 100, missing: [], substitutions: [] } },
+    { type: 'atc', t: 95, text: 'not a transmission of yours' },
+  ];
+  const rows = rowsFrom(events, { scenario: 'custom-leeds', reg: 'G-CZIA', at: 1 });
+  assert.equal(rows.length, 3, 'only the pilot transmissions');
+  assert.deepEqual(rows.map(r => r.folded), [true, true, false]);
+  assert.deepEqual(rows.map(r => r.missing.length > 0), [false, true, false]);
+  assert.equal(rows[0].raw, 'basic service cork 5626 remain outside control airspace golf India alpha');
+  assert.equal(rows[0].norm, 'basic service squawk 5626 remain outside controlled airspace g i a');
+
+  const s = stats(rows);
+  assert.equal(s.transmissions, 3);
+  assert.equal(s.rescued, 1, 'a fold repaired one that would have failed');
+  assert.equal(s.failed, 1, 'and one no fold reached');
+  assert.equal(s.otherGuess, 1);
+  assert.equal(s.failRate, 33);
+});
+
+test('the log is capped and survives storage being off', () => {
+  const mem = new Map();
+  const store = { getItem: k => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v), removeItem: k => mem.delete(k) };
+  const row = n => ({ at: n, scenario: 's', reg: 'G-CZIA', kind: 'call', id: null, t: n, raw: 'x', norm: 'x', folded: false, score: 100, missing: [], subs: [] });
+  for (let i = 0; i < 90; i++) append(store, [row(i), row(i + 1000), row(i + 2000), row(i + 3000), row(i + 4000)]);
+  const all = load(store);
+  assert.equal(all.length, 400, 'capped, so it cannot eat the other apps\' storage');
+  clear(store);
+  assert.deepEqual(load(store), []);
+
+  const dead = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }, removeItem() { throw new Error('blocked'); } };
+  assert.deepEqual(load(dead), [], 'private window: no log, no crash');
+  assert.doesNotThrow(() => append(dead, [row(1)]));
+  assert.doesNotThrow(() => clear(dead));
 });

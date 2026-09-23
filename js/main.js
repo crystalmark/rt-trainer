@@ -13,6 +13,7 @@ import { BrowserRadio, realClock, voiceChoices, voiceForUnit } from './radio.js'
 import { PushToTalk } from './ptt.js';
 import { Claude } from './claude.js';
 import { computeDebrief } from './debrief.js';
+import { rowsFrom, stats as heardStats, append as heardAppend, load as heardLoad, clear as heardClear } from './heard.js';
 import { tokens, findCallsign, normalize, speakable } from './normalize.js';
 
 const $ = id => document.getElementById(id);
@@ -530,6 +531,8 @@ function onEnd({ events, ctx, summary }) {
   }
   const d = computeDebrief(events);
   state.lastEnd = { events, ctx, summary, d };
+  // What the recogniser made of each transmission, for deciding whether the mishearing table is converging.
+  try { heardAppend(localStorage, rowsFrom(events, { scenario: s.id, reg: ctx.reg })); } catch { /* storage off */ }
   const h = store.get('history', []);
   h.unshift({ date: new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }), title: s.title, reg: ctx.reg, summary, stats: d.stats });
   store.set('history', h.slice(0, 30));
@@ -557,6 +560,36 @@ function renderDebrief(s, ctx, summary, { stats, issues, timeline }) {
   const hasKey = !!$('o-key').value.trim();
   $('d-claude-btn').hidden = !hasKey;
   $('d-claude-block').hidden = !hasKey;
+  renderHeard(rowsFrom(state.lastEnd.events, { scenario: s.id, reg: ctx.reg }));
+}
+
+// How the recogniser did, this flight and over every flight this browser remembers.
+function renderHeard(rows) {
+  const st = (label, v, cls = '') => `<div class="stat ${cls}"><b>${v ?? '\u2013'}</b><span>${label}</span></div>`;
+  const h = heardStats(rows);
+  $('d-heard').innerHTML = [
+    st('transmissions', h.transmissions),
+    st('rescued by the mishearing table', h.rescued, h.rescued ? 'good' : ''),
+    st('still failed', h.failed, h.failed ? 'bad' : 'good'),
+    st('a later guess matched better', h.otherGuess),
+  ].join('');
+  const all = heardLoad(localStorage);
+  const a = heardStats(all);
+  $('d-heard-total').textContent = all.length
+    ? `${all.length} kept: ${a.rescued} rescued, ${a.failed} failed (${a.failRate}%), median ${a.medianScore}/100`
+    : 'Nothing kept yet.';
+}
+
+function saveHeard() {
+  const all = heardLoad(localStorage);
+  if (!all.length) return toast('Nothing recorded yet.', 'info');
+  const blob = new Blob([JSON.stringify({ saved: new Date().toISOString(), stats: heardStats(all), rows: all }, null, 1)],
+    { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `rt-heard-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 function renderTl(e) {
@@ -609,6 +642,12 @@ bindFlight();
 $('brief-back').addEventListener('click', () => show('setup'));
 $('begin').addEventListener('click', begin);
 $('d-home').addEventListener('click', () => { renderSetup(); show('setup'); });
+$('d-heard-save').addEventListener('click', saveHeard);
+$('d-heard-clear').addEventListener('click', () => {
+  heardClear(localStorage);
+  if (state.lastEnd) renderHeard(rowsFrom(state.lastEnd.events, { scenario: scenario().id, reg: state.lastEnd.ctx.reg }));
+  toast('Speech recognition log cleared.', 'info');
+});
 $('d-again').addEventListener('click', renderBrief);
 $('d-claude-btn').addEventListener('click', claudeDebrief);
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

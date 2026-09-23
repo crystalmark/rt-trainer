@@ -471,7 +471,7 @@ export class Engine {
       const { text, r } = this.bestMatch(tx, current, 'readback');
       for (const w of this.scenario.warn || []) if (w.re.test(text.toLowerCase())) r.fillers.push(w.why);
       if (r.hardRatio < 0.35 && looksLikeRequest(text) && this.claude) throw new OffScript(tx);
-      const ev = this.log('readback', { atcText, text, heard: text === tx.text ? null : tx.text, attempt: attempts + 1, latency: tx.latency, result: summarise(r), model: model ? this.fill(model) : null });
+      const ev = this.log('readback', { atcText, text, heard: text === tx.text ? null : tx.text, alts: tx.alternatives || null, attempt: attempts + 1, latency: tx.latency, result: summarise(r), model: model ? this.fill(model) : null });
       if (!r.callsign) {
         await this.atc('Station reading back, say callsign');
         const tx2 = await this.waitPilot(this.settings.replyTimeout);
@@ -518,7 +518,7 @@ export class Engine {
       if (!initial && r.hardRatio < 0.35 && looksLikeRequest(text) && this.claude) throw new OffScript(tx);
       const counted = !extras.length || (countExtras && countExtras(r));
       const scored = counted ? r : match(text, items, this.ctx, { kind: 'call' });
-      this.log('call', { id, text, heard: text === tx.text ? null : tx.text, latency: tx.latency, result: summarise(scored), model: model ? this.fill(model) : null });
+      this.log('call', { id, text, heard: text === tx.text ? null : tx.text, alts: tx.alternatives || null, latency: tx.latency, result: summarise(scored), model: model ? this.fill(model) : null });
       if (!r.callsign) {
         await this.atc(initial ? 'Station calling {UNIT}, say again your callsign' : 'Station calling, say again callsign');
         continue;

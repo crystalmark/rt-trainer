@@ -121,11 +121,15 @@ function interpretRun(run) {
 /**
  * normalize("Leeds Radar, G-CLHP, QNH one zero one seven") -> "leeds radar g c l h p qnh 1017"
  */
-export function normalize(text) {
+/**
+ * `folds: false` skips the mishearing table (PHRASES) and gives the tokens the recogniser's words would have
+ * produced on their own. Only js/heard.js uses it, to measure how much of the table is earning its keep.
+ */
+export function normalize(text, { folds = true } = {}) {
   let s = String(text || '').toLowerCase();
   s = s.replace(/(\d),(\d{3})\b/g, '$1$2');           // 3,000 -> 3000
   s = splitRegistrations(s);
-  for (const [re, rep] of PHRASES) s = s.replace(re, rep);
+  if (folds) for (const [re, rep] of PHRASES) s = s.replace(re, rep);
   s = s.replace(/[^a-z0-9.\s]/g, ' ').replace(/\.(?!\d)/g, ' ').replace(/(^|\s)\.(\d)/g, '$1$2');
   // Hesitation sounds, however the recogniser spells them: er, err, errr, erm, uh, umm, ah, eh, hmm.
   const raw = s.split(/\s+/).filter(Boolean).filter(w => !HESITATION.test(w));
@@ -145,8 +149,8 @@ export function normalize(text) {
   return tokens.join(' ');
 }
 
-export function tokens(text) {
-  return normalize(text).split(' ').filter(Boolean);
+export function tokens(text, opts) {
+  return normalize(text, opts).split(' ').filter(Boolean);
 }
 
 /** "G-CLHP" -> { full: "gclhp", abbr: "ghp" } */

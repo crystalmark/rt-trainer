@@ -229,6 +229,18 @@
     <button id="d-claude-btn" class="btn ghost" type="button">Ask Claude for a debrief</button>
   </section>
   <section class="block"><h2>Call by call</h2><ol id="d-timeline" class="timeline"></ol></section>
+  <section class="block" id="d-heard-block">
+    <h2>Speech recognition</h2>
+    <p class="hint">What the recogniser did with your words, kept in this browser so the mishearing table can be
+      driven by evidence rather than guesswork. “Rescued” means the table repaired a transmission that would
+      otherwise have failed; “still failed” is the part no table has reached yet.</p>
+    <div id="d-heard" class="stats"></div>
+    <div class="miccheck">
+      <button id="d-heard-save" class="btn ghost small" type="button">Download the log</button>
+      <button id="d-heard-clear" class="btn ghost small" type="button">Clear it</button>
+      <span id="d-heard-total" class="mono small"></span>
+    </div>
+  </section>
   <div class="startbar two">
     <button id="d-home" class="btn ghost" type="button">Change scenario</button>
     <button id="d-again" class="btn primary" type="button">Fly it again</button>
