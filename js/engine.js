@@ -240,6 +240,19 @@ export class Engine {
       || (/report your position/i.test(w.text) && hasAny(text, ['miles', 'overhead', 'altitude', 'feet']));
   }
 
+  /**
+   * Pause or resume the flight. The waits all stop while paused; the deadlines kept in clock time (the gap left for
+   * the pilot to answer, the window after a call to a similar callsign) move on by however long the pause was.
+   */
+  setPaused(on) {
+    if (on === this.paused) return;
+    this.paused = on;
+    if (on) { this.pausedAt = this.now(); return; }
+    const d = this.now() - this.pausedAt;
+    if (this.trafficHoldUntil > this.pausedAt) this.trafficHoldUntil += d;
+    if (this.similarWindow) this.similarWindow.until += d;
+  }
+
   // ---------- things the pilot does rather than says (the transponder, the orbit) ----------
   /** The pilot set a code on the transponder. */
   setSquawk(code) {
@@ -267,10 +280,12 @@ export class Engine {
     if (cue) { this.emit('cue', { text: cue }); this.log('cue', { text: cue }); }
     try {
       for (let i = 0; ; i++) {
-        const deadline = this.now() + timeout * 1000;
-        while (this.now() < deadline) {
+        // Time paused doesn't count, as in sleep(): measured by the clock, a pause used up the allowance and the
+        // controller chased the pilot the moment they resumed.
+        const step = this.clock.tick || 250;
+        for (let waited = 0; waited < timeout * 1000; waited += step) {
           if (done()) { this.log('action', { id, text: cue || id }); return true; }
-          await this.sleep(this.clock.tick || 250);
+          await this.sleep(step);
         }
         if (done()) { this.log('action', { id, text: cue || id }); return true; }
         if (i >= tries) break;

@@ -442,14 +442,15 @@ function startLeg({ label, ms, cue }) {
   clearInterval(legTimer);
   $('leg-label').textContent = label;
   if (cue) $('cue').textContent = cue;
-  const t0 = Date.now();
+  // Counted down only while the flight isn't paused: by the clock, a pause showed less time left than there was, and
+  // one longer than the leg froze the countdown.
+  let left = ms, last = Date.now();
   const tick = () => {
-    const paused = state.engine?.paused;
-    const left = Math.max(0, ms - (Date.now() - t0));
-    if (!paused) {
-      $('leg-time').textContent = fmt(left / 1000);
-      $('leg-bar').style.width = `${Math.min(100, 100 * (1 - left / ms))}%`;
-    }
+    const now = Date.now();
+    if (!state.engine?.paused) left = Math.max(0, left - (now - last));
+    last = now;
+    $('leg-time').textContent = fmt(left / 1000);
+    $('leg-bar').style.width = `${Math.min(100, 100 * (1 - left / ms))}%`;
     if (left <= 0) clearInterval(legTimer);
   };
   tick(); legTimer = setInterval(tick, 1000);
@@ -581,8 +582,8 @@ $('f-skip').addEventListener('click', () => {
 });
 $('f-pause').addEventListener('click', () => {
     const e = state.engine; if (!e) return;
-    e.paused = !e.paused; $('f-pause').textContent = e.paused ? 'Resume' : 'Pause';
-    if (e.paused) speechSynthesis.pause(); else speechSynthesis.resume();
+    e.setPaused(!e.paused); $('f-pause').textContent = e.paused ? 'Resume' : 'Pause';
+    if (e.paused) state.radio?.pause(); else state.radio?.resume();
   });
   // A flight that has already stopped and still shows this screen never reached its debrief: End leaves it anyway.
   $('f-end').addEventListener('click', () => { if (state.engine?.running) state.engine.stop(); else abandonFlight(); });

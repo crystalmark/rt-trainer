@@ -23,6 +23,8 @@ export class BrowserRadio {
     this.noise = NOISE[noise] || NOISE.low;
     this.volume = volume;
     this.interrupted = false;
+    this.paused = false;
+    this.onResume = [];
   }
 
   async init() {
@@ -91,10 +93,14 @@ export class BrowserRadio {
     await wait(60 + Math.random() * 90);
     const voice = this.voiceFor(speaker);
     const parts = clauses(speech);
-    for (let i = 0; i < parts.length; i++) {
-      if (this.interrupted) break;
+    // Checked before every clause: End used to cancel only the clause being spoken, and the rest of the call went on
+    // over the debrief.
+    for (let i = 0; i < parts.length && !this.interrupted && !this.closed; i++) {
       if (i) await wait(40);                       // a beat between clauses, and no clipped start
+      await this.whilePaused();
+      if (this.interrupted || this.closed) break;
       await this.speakOne(parts[i], voice);
+      if (this.paused) i--;                        // cut off by Pause: said again, from its start, on Resume
     }
     this.squelch(false);
     const interrupted = this.interrupted;
@@ -147,6 +153,14 @@ export class BrowserRadio {
     this.startHeterodyne();
   }
 
+  // Pause holds a transmission where it is: the clause being spoken stops, and is said again from its start on Resume,
+  // with the radio busy all the while. speechSynthesis.pause() was no use: Chrome on Android ignores it, and elsewhere
+  // the clause's safety timer ran on, so the radio went quiet with half a call still to come after Resume.
+  pause() { if (this.paused) return; this.paused = true; speechSynthesis.cancel(); }
+  resume() { if (!this.paused) return; this.paused = false; this.wake(); }
+  whilePaused() { return this.paused ? new Promise(r => this.onResume.push(r)) : null; }
+  wake() { const w = this.onResume; this.onResume = []; for (const r of w) r(); }
+
   startHeterodyne() {
     if (!this.ac || this.closed || this.het) return;
     const g = this.ac.createGain(); g.gain.value = 0.08;
@@ -176,6 +190,7 @@ export class BrowserRadio {
     speechSynthesis.cancel();
     this.stopHeterodyne();
     this.closed = true;
+    this.wake();                                   // a call held by Pause ends too
     if (!this.ac) return;
     try { this.noiseSrc?.stop(); } catch { /* already stopped */ }
     this.ac.close?.().catch(() => {});

@@ -739,3 +739,29 @@ test('a Claude key that will never work ends the flight with the reason, not "sa
   assert.ok(!radio.lines.some(l => /say again/.test(l[1])), 'no "say again"');
   assert.ok(events.some(e => e.type === 'claude-error' && e.text === reason), 'and the debrief shows it');
 });
+
+// A pause used up the time allowed to set the squawk: the controller chased the pilot the moment they resumed.
+test('pausing while a squawk is wanted does not use up the time to set it', async () => {
+  const clock = fakeClock(20), radio = fakeRadio(clock);
+  let engine, wanted = false;
+  const scenario = {
+    id: 'pause', title: 'Pause', unit: 'Leeds Radar', freq: '134.580', briefing: () => [['Aircraft', 'G-CZIA']],
+    async run(s) { await s.expect({ id: 'initial', initial: true, items: [] }); s.ctx.abbreviated = true; await useSquawk(s, '5634'); s.end('Done'); },
+  };
+  engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(1), settings: { trafficDensity: 'quiet' },
+    onEvent: ev => {
+      if (ev.kind === 'awaiting' && ev.id === 'initial') sendWhenClear(engine, 'Leeds Radar, golf charlie zulu india alpha');
+      if (ev.kind === 'action' && ev.pending) wanted = true;
+    } });
+  const flight = engine.start();
+  while (!wanted) await new Promise(r => setTimeout(r, 5));
+  await new Promise(r => setTimeout(r, 100));        // 2 s in: the pilot pauses to find the transponder
+  engine.setPaused(true);
+  await new Promise(r => setTimeout(r, 2000));       // 40 s paused: twice the 20 s allowed to set it
+  engine.setPaused(false);
+  await new Promise(r => setTimeout(r, 100));
+  engine.setSquawk('5634');                          // 4 s of flying after the call to set it
+  const events = await flight;
+  assert.ok(!events.some(e => e.type === 'late-action'), JSON.stringify(events.filter(e => e.type === 'late-action')));
+  assert.ok(events.some(e => e.type === 'action' && e.id === 'squawk-5634'));
+});
