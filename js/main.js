@@ -13,10 +13,11 @@ import { BrowserRadio, realClock, voiceChoices, voiceForUnit } from './radio.js'
 import { PushToTalk } from './ptt.js';
 import { Claude } from './claude.js';
 import { computeDebrief } from './debrief.js';
-import { rowsFrom, stats as heardStats, append as heardAppend, load as heardLoad, clear as heardClear } from './heard.js';
+import { rowsFrom, stats as heardStats, append as heardAppend, load as heardLoad, clear as heardClear, deviceName } from './heard.js';
 import { tokens, findCallsign, normalize, speakable } from './normalize.js';
 
 const $ = id => document.getElementById(id);
+const DEVICE = deviceName(navigator.userAgent);           // which device each speech recognition log row came from
 // Site data can be blocked (a browser setting), and then even reading window.localStorage throws. So it is read once,
 // here, and null when it can't be had: the debrief read it directly, threw, and was never shown.
 const LS = (() => { try { return window.localStorage; } catch { return null; } })();
@@ -622,7 +623,7 @@ function onEnd({ events, ctx, summary }) {
   const d = computeDebrief(events);
   state.lastEnd = { events, ctx, summary, d };
   // What the recogniser made of each transmission, for deciding whether the mishearing table is converging.
-  try { heardAppend(LS, rowsFrom(events, { scenario: s.id, reg: ctx.reg })); } catch { /* storage off */ }
+  try { heardAppend(LS, rowsFrom(events, { scenario: s.id, reg: ctx.reg, device: DEVICE })); } catch { /* storage off */ }
   if (judged(d.stats)) {                          // an empty session would push real ones out of the eight shown
     const h = pastSessions();
     h.unshift({ date: new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }), title: s.title, reg: ctx.reg, summary, stats: d.stats });
@@ -655,7 +656,7 @@ function renderDebrief(s, ctx, summary, { stats, issues, timeline }) {
   const hasKey = !!$('o-key').value.trim();
   $('d-claude-btn').hidden = !hasKey;
   $('d-claude-block').hidden = !hasKey;
-  renderHeard(rowsFrom(state.lastEnd.events, { scenario: s.id, reg: ctx.reg }));
+  renderHeard(rowsFrom(state.lastEnd.events, { scenario: s.id, reg: ctx.reg, device: DEVICE }));
 }
 
 // How the recogniser did, this flight and over every flight this browser remembers.
@@ -745,7 +746,7 @@ $('d-home').addEventListener('click', () => { renderSetup(); show('setup'); });
 $('d-heard-save').addEventListener('click', saveHeard);
 $('d-heard-clear').addEventListener('click', () => {
   heardClear(LS);
-  if (state.lastEnd) renderHeard(rowsFrom(state.lastEnd.events, { scenario: scenario().id, reg: state.lastEnd.ctx.reg }));
+  if (state.lastEnd) renderHeard(rowsFrom(state.lastEnd.events, { scenario: scenario().id, reg: state.lastEnd.ctx.reg, device: DEVICE }));
   toast('Speech recognition log cleared.', 'info');
 });
 $('d-again').addEventListener('click', renderBrief);

@@ -16,14 +16,26 @@ const JUDGED = ['call', 'readback'];
 const UNJUDGED = ['free-assessment', 'unexpected', 'stepped-in', 'wrong-callsign', 'blocked', 'answer', 'callsign-given', 'say-again'];
 
 /** One row per transmission from an engine event log. Pure: storage and the DOM are somebody else's problem. */
-export function rowsFrom(events, { scenario = '', reg = '', at = Date.now() } = {}) {
+/**
+ * Which device a flight was flown on, from the browser's own description of itself: "Android · Chrome",
+ * "Mac · Chrome". The Pixel and the Mac hear very differently, and a log without this got the two confused.
+ */
+export function deviceName(ua = '') {
+  const os = /Android/i.test(ua) ? 'Android' : /iPhone/i.test(ua) ? 'iPhone' : /iPad/i.test(ua) ? 'iPad'
+    : /Mac OS X|Macintosh/i.test(ua) ? 'Mac' : /Windows/i.test(ua) ? 'Windows' : /CrOS/i.test(ua) ? 'ChromeOS' : /Linux/i.test(ua) ? 'Linux' : 'other';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox'
+    : /Chrome\/|CriOS\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'other';
+  return `${os} · ${browser}`;
+}
+
+export function rowsFrom(events, { scenario = '', reg = '', device = '', at = Date.now() } = {}) {
   const kinds = [...JUDGED, ...UNJUDGED, 'empty-tx'];
   return events.filter(e => kinds.includes(e.type)).map(e => {
     const r = e.result || {};
     const text = e.text || '';
     const norm = tokens(text).join(' ');
     const row = {
-      at, scenario, reg, kind: e.type, id: e.id || null, t: e.t,
+      at, scenario, reg, device, kind: e.type, id: e.id || null, t: e.t,
       judged: JUDGED.includes(e.type),
       heardNothing: e.type === 'empty-tx',              // the recogniser returned no words at all
       raw: e.heard || text,                             // what it offered first

@@ -352,3 +352,15 @@ test('a pressure setting with a doubled zero is heard as it was said', () => {
   assert.equal(normalize('microlyte'), 'microlight');
   assert.equal(normalize('CTR nut above 2000'), 'ctr not above 2000');
 });
+
+// The Pixel and the Mac hear very differently, and a log without the device got the two confused.
+test('the speech recognition log says which device each row came from', async () => {
+  const { deviceName, rowsFrom } = await import('../js/heard.js');
+  assert.equal(deviceName('Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36'), 'Android · Chrome');
+  assert.equal(deviceName('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'), 'Mac · Chrome');
+  assert.equal(deviceName('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'), 'Mac · Safari');
+  assert.equal(deviceName('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/140.0 Mobile/15E148 Safari/604.1'), 'iPhone · Chrome');
+  assert.equal(deviceName('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36 Edg/140.0'), 'Windows · Edge');
+  const rows = rowsFrom([{ type: 'call', t: 1, text: 'golf india alpha', result: { score: 100, missing: [], substitutions: [] } }], { device: 'Android · Chrome' });
+  assert.equal(rows[0].device, 'Android · Chrome');
+});
