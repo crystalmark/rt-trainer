@@ -100,6 +100,11 @@ function interpretRun(run) {
     if (start > 0) return [...interpretRun(run.slice(0, start)), ...interpretRun(run.slice(start))];
   }
   if (k >= 0) {
+    // Digits read one at a time after the last "thousand" or "hundred" are the next number, not its units: "not above
+    // two thousand one zero one seven" is an altitude and a QNH, and added up it came out as 2009.
+    const last = Math.max(run.lastIndexOf('thousand'), run.lastIndexOf('hundred'));
+    const tail = run.slice(last + 1);
+    if (tail.length > 1 && tail.every(w => w in DIGITS)) return [...interpretRun(run.slice(0, last + 1)), ...interpretRun(tail)];
     let total = 0, cur = 0;
     for (const w of run) {
       if (w === 'thousand') { total += (cur || 1) * 1000; cur = 0; }
@@ -114,9 +119,14 @@ function interpretRun(run) {
   const out = [];
   let buf = '';
   let pendingTens = null;
+  // The recogniser wrote a whole number ("2000", "1017"): whatever is said after it one digit at a time is the next
+  // number. Appended, "not above 2000 1 0 1 7" came out as 20001017.
+  let whole = false;
   const flushTens = () => { if (pendingTens !== null) { buf += String(pendingTens); pendingTens = null; } };
   for (const w of run) {
-    if (w === 'decimal' || w === 'point') { flushTens(); buf += '.'; continue; }
+    if (w === 'decimal' || w === 'point') { flushTens(); buf += '.'; whole = false; continue; }
+    if (whole && (w in DIGITS || w in TEENS || w in TENS || /^\d$/.test(w))) { out.push(cleanDecimal(buf)); buf = ''; }
+    whole = /^\d{3,}(\.\d+)?$/.test(w);
     if (w in TENS) { flushTens(); pendingTens = TENS[w]; continue; }
     if (w in DIGITS) {
       if (pendingTens !== null) { buf += String(pendingTens + DIGITS[w]); pendingTens = null; }

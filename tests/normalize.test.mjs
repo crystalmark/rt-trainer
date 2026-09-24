@@ -324,3 +324,15 @@ test('the speech recognition log copes with no storage at all', () => {
   assert.deepEqual(append(null, rows), rows);
   assert.doesNotThrow(() => clear(null));
 });
+
+// Two numbers spoken back to back, with no "feet" or "QNH" between them: added together, a correct readback of
+// "not above 2000 feet, QNH 1017" came out as 2009, or as 20001017.
+test('an altitude followed straight by a QNH is two numbers', () => {
+  assert.equal(normalize('not above two thousand one zero one seven'), 'not above 2000 1017');
+  assert.equal(normalize('altitude two thousand three hundred, one zero one six'), 'altitude 2300 1016');
+  assert.equal(normalize('not above 2000 1 0 1 7'), 'not above 2000 1017');
+  assert.equal(normalize('not above 2000 one zero one seven'), 'not above 2000 1017');
+  assert.equal(normalize('two thousand five'), '2005', 'one digit after a thousand is still its units');
+  assert.equal(normalize('one two five decimal four seven five'), '125.475');
+  assert.equal(normalize('134 decimal five eight'), '134.58');
+});
