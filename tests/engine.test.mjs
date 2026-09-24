@@ -682,3 +682,21 @@ test('with nobody on the radio at Carlisle or East Fortune, nothing answers', as
     assert.ok(unstaffed > 0, `${id}: no unstaffed run in 40 seeds`);
   }
 });
+
+// Change frequency and the rest of an exchange on the old one isn't heard. It went on playing: Edinburgh's clearances,
+// heard on East Fortune's frequency.
+test('an exchange on a frequency you have just left is not heard to the end', async () => {
+  const clock = fakeClock(400), radio = fakeRadio(clock);
+  let engine, n = 0;
+  const scenario = {
+    id: 'left', title: 'Left', unit: 'Edinburgh Approach', freq: '121.205', briefing: () => [['Aircraft', 'G-CZIA']],
+    traffic: () => (n++ ? null : [['Rescue 199', 'Edinburgh Approach, Rescue 199, request zone entry'],
+      ['atc', 'Rescue 199, cleared to enter the Edinburgh control zone']]),
+    async run(s) { await s.pause(120); s.end('Done'); },
+  };
+  engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(1), settings: { trafficDensity: 'busy' },
+    onEvent: ev => { if (ev.kind === 'radio' && ev.speaker === 'Rescue 199') engine.ctx.unit = 'East Fortune Radio'; } });   // the pilot changes frequency
+  await engine.start();
+  assert.ok(radio.lines.some(l => /request zone entry/.test(l[1])), 'the exchange began');
+  assert.ok(!radio.lines.some(l => /cleared to enter/.test(l[1])), 'and the rest of it was not heard on the new frequency');
+});

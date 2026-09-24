@@ -292,9 +292,11 @@ export class Engine {
 
   queueAtc(text, { delay = 0.6, bypassLock = false } = {}) {
     if (this.ctx.blind) return;                         // nobody on the frequency to answer
+    const unit = this.ctx.unit;
     const run = async () => {
       try {
         await this.sleep(delay * 1000, false);
+        if (this.ctx.unit !== unit) return;             // you have changed frequency since: it isn't heard
         await this.transmit('atc', text, { toPilot: true });
       } catch (e) { if (!(e instanceof Ended)) throw e; }
     };
@@ -691,7 +693,7 @@ export class Engine {
         const [a, b] = DENSITY_GAP[this.settings.trafficDensity] || DENSITY_GAP.normal;
         await this.sleep(this.rand(a, b) * 1000, false);
         while (this.running && this.pilotsTurn()) await this.sleep(1000, false);
-        const ex = gen(this.api(), { similar: this.similarAbbr(), rng: this.rng });
+        const unit = this.ctx.unit, ex = gen(this.api(), { similar: this.similarAbbr(), rng: this.rng });
         if (!ex || !ex.length) continue;
         await this.withChannel(async () => {
           if (this.pilotsTurn()) return;         // the controller spoke to the pilot while we queued: leave the gap
@@ -700,6 +702,9 @@ export class Engine {
             for (let i = 0; i < ex.length; i++) {
               const line = ex[i];
               if (i) await this.sleep(this.rand(0.5, 1.4) * 1000, false);
+              // Changed frequency since it began: the rest is on one you are no longer listening to. It went on playing,
+              // Edinburgh's clearances heard on East Fortune's frequency.
+              if (this.ctx.unit !== unit) break;
               await this.transmit(line[0], line[1], { traffic: true });
               if (line[2] && line[2].similar) this.similarWindow = { until: this.now() + 8000, call: line[2].similar, text: this.fill(line[1]) };
             }
@@ -707,7 +712,7 @@ export class Engine {
         });
         if (this.standbyPending) {
           this.standbyPending = false;
-          await this.withChannel(async () => { await this.sleep(700, false); await this.transmit('atc', '{CALL}, pass your message', { toPilot: true }); });
+          if (this.ctx.unit === unit) await this.withChannel(async () => { await this.sleep(700, false); await this.transmit('atc', '{CALL}, pass your message', { toPilot: true }); });
         }
       }
     } catch (e) { if (!(e instanceof Ended) && !(e instanceof OffScript)) console.error(e); }
