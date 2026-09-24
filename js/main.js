@@ -17,9 +17,12 @@ import { rowsFrom, stats as heardStats, append as heardAppend, load as heardLoad
 import { tokens, findCallsign, normalize, speakable } from './normalize.js';
 
 const $ = id => document.getElementById(id);
+// Site data can be blocked (a browser setting), and then even reading window.localStorage throws. So it is read once,
+// here, and null when it can't be had: the debrief read it directly, threw, and was never shown.
+const LS = (() => { try { return window.localStorage; } catch { return null; } })();
 const store = {
-  get(k, d) { try { const v = localStorage.getItem('rt.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem('rt.' + k, JSON.stringify(v)); } catch { /* storage off */ } },
+  get(k, d) { try { const v = LS.getItem('rt.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { LS.setItem('rt.' + k, JSON.stringify(v)); } catch { /* storage off */ } },
 };
 
 // Storage is shared with the other apps on crystalmark.co.uk, so what comes back is only taken if it has the shape this
@@ -604,7 +607,7 @@ function onEnd({ events, ctx, summary }) {
   const d = computeDebrief(events);
   state.lastEnd = { events, ctx, summary, d };
   // What the recogniser made of each transmission, for deciding whether the mishearing table is converging.
-  try { heardAppend(localStorage, rowsFrom(events, { scenario: s.id, reg: ctx.reg })); } catch { /* storage off */ }
+  try { heardAppend(LS, rowsFrom(events, { scenario: s.id, reg: ctx.reg })); } catch { /* storage off */ }
   const h = pastSessions();
   h.unshift({ date: new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }), title: s.title, reg: ctx.reg, summary, stats: d.stats });
   store.set('history', h.slice(0, 30));
@@ -646,7 +649,7 @@ function renderHeard(rows) {
     st('nothing recognised', h.heardNothing, h.heardNothing ? 'bad' : ''),
     st('a later guess matched better', h.otherGuess),
   ].join('');
-  const all = heardLoad(localStorage);
+  const all = heardLoad(LS);
   const a = heardStats(all);
   $('d-heard-total').textContent = all.length
     ? `${all.length} kept: ${a.judged} marked (${a.failed} failed, ${a.failRate}%), ${a.unjudged} off script, ${a.rescued} rescued`
@@ -654,7 +657,7 @@ function renderHeard(rows) {
 }
 
 function saveHeard() {
-  const all = heardLoad(localStorage);
+  const all = heardLoad(LS);
   if (!all.length) return toast('Nothing recorded yet: fly one and it will be here.', 'info');
   const blob = new Blob([JSON.stringify({ saved: new Date().toISOString(), stats: heardStats(all), rows: all }, null, 1)],
     { type: 'application/json' });
@@ -721,7 +724,7 @@ $('begin').addEventListener('click', begin);
 $('d-home').addEventListener('click', () => { renderSetup(); show('setup'); });
 $('d-heard-save').addEventListener('click', saveHeard);
 $('d-heard-clear').addEventListener('click', () => {
-  heardClear(localStorage);
+  heardClear(LS);
   if (state.lastEnd) renderHeard(rowsFrom(state.lastEnd.events, { scenario: scenario().id, reg: state.lastEnd.ctx.reg }));
   toast('Speech recognition log cleared.', 'info');
 });

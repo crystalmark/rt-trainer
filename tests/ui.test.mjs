@@ -47,3 +47,9 @@ test('the page has a CSP ahead of what it governs, and nothing inline for it to 
     assert.ok(!/\sstyle=["'$]|setAttribute\(\s*['"]style|\son[a-z]+=["']|\beval\(|new Function\(/.test(src), `${f}: something the CSP would refuse`);
   }
 });
+
+test('storage is reached one way, which survives site data being blocked', () => {
+  // Reading window.localStorage itself throws when site data is blocked: done directly, it took the debrief down.
+  const direct = main.split('\n').filter(l => /\blocalStorage\b/.test(l) && !/^\s*\/\//.test(l));
+  assert.deepEqual(direct.map(l => l.trim()), ['const LS = (() => { try { return window.localStorage; } catch { return null; } })();']);
+});

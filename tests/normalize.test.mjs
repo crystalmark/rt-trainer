@@ -316,3 +316,11 @@ test('X-ray is one letter, so a registration with an X is still found', () => {
   assert.equal(normalize('details sent by e-mail'), 'details sent by email');
   assert.equal(normalize('G-CLHP'), 'g c l h p', 'a registration is still spelt out');
 });
+
+// With site data blocked there is no storage at all: the log carries on without it rather than taking the debrief down.
+test('the speech recognition log copes with no storage at all', () => {
+  const rows = [{ kind: 'call', judged: true, failed: false }];
+  assert.deepEqual(load(null), []);
+  assert.deepEqual(append(null, rows), rows);
+  assert.doesNotThrow(() => clear(null));
+});
