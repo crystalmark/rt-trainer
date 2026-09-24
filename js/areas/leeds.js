@@ -32,7 +32,7 @@ const VRP_RT = {
   DBY: { name: 'Dewsbury', hear: ['dewsbury', 'dews bury', 'jewsbury'] },
   ECP: { name: 'Eccup Reservoir', hear: ['eccup reservoir', 'eccup', 'eckup', 'e cup', 'ecup'] },
   HGT: { name: 'Harrogate', hear: ['harrogate', 'harrogate railway station', 'harrow gate'] },
-  SML: { name: 'Salts Mill', hear: ['salts mill', 'salt mill', 'saltaire', 'salts mil', 'saltmill'] },
+  SML: { name: 'Salts Mill', hear: ['salts mill', 'salt mill', 'saltaire', 'salts mil', 'saltmill', 'salt smell', 'salts smell'] },
 };
 
 // [name, lat, lon, kind, extra things speech recognition may hear, pronunciation]

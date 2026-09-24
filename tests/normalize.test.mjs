@@ -140,9 +140,8 @@ test('and the whole readback then passes clean', () => {
 // thing that must not be papered over, because reading back the wrong QNH is the error the check exists for.
 test('a clearance readback: the acronyms recovered, the number left alone', () => {
   const said = 'clear to enter the Leeds controlled zone q&h 10005 the dfr not above 2,000 feet Wilco golf India alpha';
-  // 10005 is split at the pressure's own length like any code; what matters is that it never becomes 1005.
-  assert.equal(normalize(said), 'cleared to enter the leeds controlled zone qnh 1000 5 vfr not above 2000 feet wilco g i a');
-  assert.ok(!/\b1005\b/.test(normalize(said)), 'a mangled pressure is never repaired into the right one');
+  // 10005 is Chrome doubling the zero of "one zero zero five", as the logs later showed it doing again and again.
+  assert.equal(normalize(said), 'cleared to enter the leeds controlled zone qnh 1005 vfr not above 2000 feet wilco g i a');
 
   // Spelling the letters out is the thing a pilot can actually do about it: spaced letters fold back together,
   // where the recogniser's guess at the acronym does not.
@@ -337,4 +336,19 @@ test('an altitude followed straight by a QNH is two numbers', () => {
   assert.equal(normalize('two thousand five'), '2005', 'one digit after a thousand is still its units');
   assert.equal(normalize('one two five decimal four seven five'), '125.475');
   assert.equal(normalize('134 decimal five eight'), '134.58');
+});
+
+// Chrome doubles the zero in "one zero zero X", on the Mac and the Pixel alike: four times in two days of logs.
+test('a pressure setting with a doubled zero is heard as it was said', () => {
+  assert.equal(normalize('golf India alpha cleared into the controlled zone via Ilkley not above 2000 feet q&h 10009 report IKEA golf India alpha'),
+    'g i a cleared into the controlled zone via ilkley not above 2000 feet qnh 1009 report ikea g i a');
+  assert.equal(normalize('1,700 feet on q&h 10 0 0 8 currently four miles'), '1700 feet on qnh 1008 currently 4 miles');
+  assert.equal(normalize('qnh 10008'), 'qnh 1008');
+  // ...while a following number still comes off a real four-digit pressure, and nothing else is touched
+  assert.equal(normalize('qnh one zero one eight four miles'), 'qnh 1018 4 miles');
+  assert.equal(normalize('qnh 1000'), 'qnh 1000');
+  assert.equal(normalize('squawk 10009'), 'squawk 1000 9', 'a squawk is split at its four digits, not collapsed like a pressure');
+  // and the rest of that flight
+  assert.equal(normalize('microlyte'), 'microlight');
+  assert.equal(normalize('CTR nut above 2000'), 'ctr not above 2000');
 });

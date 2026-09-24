@@ -65,9 +65,9 @@ const PHRASES = [
   [/\bthe [dvb]?f\.?\s?r\.?\b/g, 'vfr'],                // "VFR" comes back as "the FR", "the DFR"
   [/\b[bd]\.?\s?f\.?\s?r\.?\b/g, 'vfr'],                  // ...and "BFR"
   [/\bthey are(?: the)?\b(?=\s+(?:not|\d))/g, 'vfr'],       // ...and, in a clearance, "they are the not above"
-  [/\bnot of(?: an?)?\b(?=\s+\d)/g, 'not above'],          // "not of a 2000"
+  [/\bnot of(?: an?)?\b(?=\s+\d)/g, 'not above'], [/\bnut above\b/g, 'not above'],          // "not of a 2000"
   [/\b(?:clear|glare) to (enter|transit|cross|land|leave)\b/g, 'cleared to $1'],   // the -ed goes missing, as on "controlled"
-  [/\bmicro ?(light|lite)s?\b/g, 'microlight'],
+  [/\bmicro ?(light|lite|lyte)s?\b/g, 'microlight'],
   [/\bwill co\b/g, 'wilco'], [/\broutine\b(?= (own )?navigation)/g, 'resume'], [/\broutine\b/g, 'routing'],
 ];
 
@@ -179,6 +179,11 @@ export function normalize(text, { folds = true } = {}) {
   // anything past the code's own length back off as the next number.
   for (let i = 0; i + 1 < tokens.length; i++) {
     const next = tokens[i + 1];
+    // "One zero zero nine" comes back as 10009, or "10 0 0 9": Chrome doubles the zero. It did it four times in two
+    // days' logs, on both devices. No pressure setting has three zeros after the one, so take one back out — which
+    // cannot turn a wrong readback into a right one — rather than splitting it into 1000 and 9. (The cost: QNH
+    // 1000 followed at once by a one-digit number reads as 100X. Rare, and it fails rather than passes.)
+    if (/^(qnh|qfe|rps|pressure)$/.test(tokens[i]) && /^1000\d$/.test(next)) { tokens[i + 1] = `100${next[4]}`; continue; }
     const m = tokens[i] === 'squawk' ? /^([0-7]{4})(\d+)$/.exec(next)
       : /^(qnh|qfe|rps|pressure)$/.test(tokens[i]) ? /^(9\d\d|1\d{3})(\d+)$/.exec(next) : null;
     if (m) tokens.splice(i + 1, 1, m[1], m[2]);
