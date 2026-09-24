@@ -504,3 +504,48 @@ test('a wrong SafetyCom frequency is pointed out, because nobody on the radio wi
   const right = await run('golf India alpha request change of frequency to SafetyCom one three five decimal four eight zero');
   assert.ok(!right.some(e => e.type === 'note' && /SafetyCom is/.test(e.text)), 'nothing to say when it is right');
 });
+
+// Refused, and told to report changing frequency: the request made on the way round went to Claude, or without it
+// drew "unable, continue as cleared" and later a service terminated because "you never asked".
+test('asking to change frequency after a refusal is the call ATC asked for', async () => {
+  const asked = [];
+  const claude = { atc: async () => { asked.push(1); return { transmissions: ['{CALL}, roger'], end: true, summary: 'Ended off script' }; } };
+  for (const withClaude of [claude, null]) {
+    const clock = fakeClock(4000), radio = fakeRadio(clock);
+    let handler = () => {};
+    const engine = new Engine({ scenario: scenarioFor(ROUTES[0], 3), profile: PROFILES[1], radio, clock, rng: seeded(3),
+      settings: { trafficDensity: 'quiet', refusalBias: 1 }, claude: withClaude, onEvent: e => handler(e) });
+    handler = earlyPilot(engine, {
+      when: ev => ev.kind === 'log' && ev.event.type === 'readback' && /Basic Service continues, report changing frequency/.test(ev.event.atcText || ''),
+      say: 'golf India alpha request frequency change to SafetyCom', skip: 'qsy' });
+    const events = await engine.start();
+    const label = withClaude ? 'with Claude' : 'without';
+    assert.ok(!events.some(e => e.type === 'offscript' || e.type === 'unexpected'), `${label}: ${JSON.stringify(events.filter(e => e.type === 'offscript' || e.type === 'unexpected'))}`);
+    assert.match(events.find(e => e.type === 'call' && e.id === 'qsy')?.text || '', /SafetyCom/, label);
+    assert.ok(events.some(e => e.type === 'atc' && /frequency change approved/.test(e.text)), label);
+    assert.equal(events.at(-1).summary, 'Transit refused: routed round', label);
+  }
+  assert.equal(asked.length, 0);
+});
+
+// Out and back through the zone, the shape of the Forth bridges flight: a place flown past twice is two reports.
+// Looked up by place, both were cued at the second visit, and a report made on reaching the first drew "say again".
+test('out and back: each report is cued at its own visit', async () => {
+  const edinburgh = AREAS.find(a => a.id === 'edinburgh');
+  const text = "East Fortune to East Fortune via Musselburgh, Arthur's Seat, Forth Road Bridge, Arthur's Seat, Musselburgh at 1500 ft";
+  for (const profile of PROFILES) {
+    for (const seed of [1, 2]) {
+      const scenario = scenarioIn(edinburgh, text, seed);
+      const reports = scenario.plan.transit.reports;
+      assert.equal(reports.filter(r => r.place.name === "Arthur's Seat").length, 2, "the route passes Arthur's Seat twice");
+      const cued = [];
+      const events = await fly(scenario, profile, seed, { settings: { trafficDensity: 'quiet', refusalBias: -1 },
+        watch: (ev, engine) => { if (ev.kind === 'awaiting' && /^report-/.test(ev.id || '')) cued.push(engine.nav.s); } });
+      assertClean(events, `${profile.reg} seed ${seed}`);
+      assert.equal(cued.length, reports.length, `${profile.reg} seed ${seed}: ${cued.length} reports asked for`);
+      reports.forEach((r, i) => assert.ok(Math.abs(cued[i] - r.s) < 0.5,
+        `${profile.reg} seed ${seed}: ${r.place.name} (at ${r.s.toFixed(1)} nm) was asked for at ${cued[i].toFixed(1)} nm`));
+      assert.ok(!events.some(e => e.type === 'unexpected'), JSON.stringify(events.filter(e => e.type === 'unexpected')));
+    }
+  }
+});

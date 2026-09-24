@@ -219,7 +219,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
       await s.leg('Holding outside controlled airspace', ctx.speedKt * 4 / 60, { cue: 'Orbit outside controlled airspace and listen out.' });
     }
     await clearance(s, P0);
-    return through(s, P0, T.reports.map(r => r.place));
+    return through(s, P0, T.reports);
   }
 
   async function clearance(s, P0) {
@@ -250,23 +250,23 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     if (qnh !== q0 && !st.qnhNoted) { st.qnhNoted = true; s.note(`QNH changed from ${q0} to ${qnh} in the clearance: the altimeter should be reset.`); }
   }
 
-  // Cleared: report each place in R in turn, then leave controlled airspace and the frequency.
+  // Cleared: report each of R (the plan's reports, { place, s }) in turn, then leave controlled airspace and the
+  // frequency. Each is cued at its own point. Looked up by place, a place flown past twice (out and back) cued both
+  // reports at the second visit: the first came 18 nm late, and one made on time drew "say again".
   async function through(s, P0, R) {
     const { ctx } = s, T = P0.transit;
-    const exact = new Map(T.reports.map(r => [r.place, r.s]));
-    const at = p => exact.get(p) ?? P0.nearestS(p).s;
     let i = 0;
     const from = Math.max(s.position().s, T.sIn + 0.2), to = T.sOut - 0.3;
-    const surprises = to > from ? surprisesInZone(s, from, to, () => R[i] || null) : [];
+    const surprises = to > from ? surprisesInZone(s, from, to, () => R[i]?.place || null) : [];
     for (; i < R.length; i++) {
-      const r = R[i];
-      await flyTo(s, at(r), r.name, surprises, { early: true });
-      await s.expect({ id: `report-${r.id}`, cue: `${r.name}.`, nudge: '{CALL}, report your position', items: [named(r)], model: `{CALL}, ${r.name}` });
+      const r = R[i].place, visit = R.slice(0, i).filter(x => x.place === r).length;
+      await flyTo(s, R[i].s, r.name, surprises, { early: true });
+      await s.expect({ id: `report-${r.id}${visit ? `-${visit + 1}` : ''}`, cue: `${r.name}.`, nudge: '{CALL}, report your position', items: [named(r)], model: `{CALL}, ${r.name}` });
       const svc = st.controlSaid ? '' : `${ctx.transponder ? 'radar ' : ''}control service`;
       const svcItems = svc ? [P('control service', ['control service'], { fix: svc })] : [];
       const lead = svc ? `${svc}, ` : '', Lead = svc ? `${cap(svc)}, ` : '';
       if (i < R.length - 1) {
-        await s.atc(`{CALL}, roger, ${lead}report ${R[i + 1].name}`, { readback: [...svcItems, WILCO()], model: `${Lead}wilco, {CALL}` });
+        await s.atc(`{CALL}, roger, ${lead}report ${R[i + 1].place.name}`, { readback: [...svcItems, WILCO()], model: `${Lead}wilco, {CALL}` });
       } else if (T.leaveDirect) {
         await s.atc(`{CALL}, roger, ${lead}route direct ${T.leaveDirect.name}, report leaving controlled airspace`, {
           readback: [...svcItems, named(T.leaveDirect, `route direct ${T.leaveDirect.name}`), WILCO()],
@@ -306,7 +306,9 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     st.refused = true;
     await s.atc('{CALL}, roger, Basic Service continues, report changing frequency', { readback: [BASIC(), WILCO()], model: 'Basic Service, wilco, {CALL}' });
     s.hold(s.position().s, 'Holding outside controlled airspace');
-    await s.leg('Routing round the zone', 5, { cue: 'Plan B: pick a way round on the map (tap a place, then Direct to or Divert), remaining outside controlled airspace.' });
+    // Told to report changing frequency: asking to on the way round is that call. It went to Claude, or drew
+    // "unable, continue as cleared" and then a service terminated because "you never asked".
+    await s.leg('Routing round the zone', 5, { cue: 'Plan B: pick a way round on the map (tap a place, then Direct to or Divert), remaining outside controlled airspace.', early: true });
     await leaveFrequency(s, 'Transit refused: routed round');
   }
 
@@ -361,7 +363,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
         items: [P('request', ['request'], { soft: true, why: 'Inside controlled airspace a change of route is a request: keep to your clearance until ATC approves it.' }),
           named(target, null, { ask: '{CALL}, say your routing' })],
         model: `{CALL}, request route direct ${target.name}` });
-      const remaining = () => plan.transit.reports.filter(r => r.s > s.position().s + 0.1).map(r => r.place);
+      const remaining = () => plan.transit.reports.filter(r => r.s > s.position().s + 0.1);
       if (!asked) { s.dropPending(); return through(s, plan, remaining()); }
       if (s.chance(0.15 + s.settings.refusalBias)) {
         await s.atc('{CALL}, unable due traffic, continue as cleared', {
@@ -370,8 +372,8 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
         return through(s, plan, remaining());
       }
       const next = planFrom(s.position(), change.points);                   // from where you are now
-      const R = next.transit ? next.transit.reports.map(r => r.place) : [];
-      await s.atc(`{CALL}, roger, route direct ${target.name}, ${R.length ? `report ${R[0].name}` : 'report leaving controlled airspace'}`, {
+      const R = next.transit ? next.transit.reports : [];
+      await s.atc(`{CALL}, roger, route direct ${target.name}, ${R.length ? `report ${R[0].place.name}` : 'report leaving controlled airspace'}`, {
         readback: [named(target, `route direct ${target.name}`), WILCO()], model: `Direct ${target.name}, wilco, {CALL}` });
       plan = next;
       s.fly(next);
@@ -389,13 +391,13 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     if (T) {
       if (st.refused) {
         await s.atc('{CALL}, negative, remain outside controlled airspace', { readback: [ROS()], model: 'Remain outside controlled airspace, {CALL}' });
-        await s.leg('Holding outside controlled airspace', 3, { cue: 'Still refused: pick a way round that stays outside controlled airspace.' });
+        await s.leg('Holding outside controlled airspace', 3, { cue: 'Still refused: pick a way round that stays outside controlled airspace.', early: true });
         return leaveFrequency(s, 'Transit refused: routed round');
       }
       if (st.cleared) {                                                     // cleared but not in yet: a new clearance for the new way in
         st.cleared = false;
         await clearance(s, plan);
-        return through(s, plan, T.reports.map(r => r.place));
+        return through(s, plan, T.reports);
       }
       await s.atc('{CALL}, roger, remain outside controlled airspace', { readback: [ROS()], model: 'Remain outside controlled airspace, {CALL}' });
       return approach(s, plan);
