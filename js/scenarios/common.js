@@ -31,6 +31,10 @@ export const ROS = () => P('remain outside controlled airspace', ['remain outsid
 export const TRAFFIC_ACK = () => P('traffic acknowledged', ['traffic in sight', 'in sight', 'looking', 'visual', 'negative contact', 'not sighted', 'no contact'], {
   why: 'Answer traffic information with “looking”, “traffic in sight” or “negative contact”.',
 });
+// "Basic Service terminated" gets an answer, and it is neither the next call nor something to meet with "say again".
+export const TERMINATED_ACK = transponder => ({ id: 'terminated', optional: true,
+  items: transponder ? [P('squawk 7000', ['7000'], { soft: true, why: 'Read back the squawk you’re given.' })] : [],
+  model: transponder ? 'Squawk 7000, {CALL}' : 'Roger, {CALL}' });
 
 /**
  * ATC has given you a squawk. Reading it back isn't enough: wait for it to appear on the transponder, chase it if

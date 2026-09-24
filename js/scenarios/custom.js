@@ -4,7 +4,7 @@
 // Change the route in flight (the map's Direct to / Divert) and the controller picks up from wherever the flight
 // has got to: tell them, and they re-clear you or carry on with a Basic Service. Cleared inside controlled
 // airspace, you ask first and the aircraft keeps to the clearance until they approve.
-import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, TRAFFIC_ACK, details, initialCall, useSquawk } from './common.js';
+import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, TRAFFIC_ACK, TERMINATED_ACK, details, initialCall, useSquawk } from './common.js';
 import { planRoute, reroutePoints, presentPosition, routeText, whereIs } from '../route.js';
 import { miles } from '../geo.js';
 
@@ -137,7 +137,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     const f = asked && (asked.norm.match(/\b135\.4\d*\b/) || [])[0];
     if (f && f !== '135.48') s.note(`SafetyCom is 135.480, and you said ${Number(f).toFixed(3)}. The controller will not correct a frequency that is not theirs.`);
     if (!asked) {
-      await s.atc(x ? '{CALL}, Basic Service terminated, squawk 7000' : '{CALL}, Basic Service terminated');
+      await s.atc(x ? '{CALL}, Basic Service terminated, squawk 7000' : '{CALL}, Basic Service terminated', { reply: TERMINATED_ACK(x) });
       s.note('The controller terminated the service rather than approving a frequency change: you never asked for one.');
     } else {
       await s.atc(x ? '{CALL}, squawk 7000, frequency change approved' : '{CALL}, frequency change approved', {

@@ -78,8 +78,13 @@ export function match(text, spec, ctx, opts = {}) {
   };
 }
 
-/** Did the pilot ask ATC to repeat? */
+/**
+ * Did the pilot ask ATC to repeat? Not "I say again", which is the pilot repeating their own message (after a
+ * "say again", usually) and used to be thrown away as a request. Tested on the words as heard: once normalised,
+ * "I" and "India" are the same letter.
+ */
 export function isSayAgain(text) {
+  if (/\bi say again\b/i.test(String(text || ''))) return false;
   return hasAny(text, ['say again', 'repeat', 'did not copy', 'didnt copy', 'not understood']);
 }
 

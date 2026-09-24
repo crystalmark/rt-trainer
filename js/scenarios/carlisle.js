@@ -1,4 +1,4 @@
-import { P, QNH, BASIC, WILCO, details, initialCall, carlisleTraffic, londonInfoTraffic } from './common.js';
+import { P, QNH, BASIC, WILCO, TRAFFIC_ACK, details, initialCall, carlisleTraffic, londonInfoTraffic } from './common.js';
 
 // Carlisle is an Air/Ground station: no clearances, no instructions. The pilot announces.
 const AG_WARN = [
@@ -6,6 +6,14 @@ const AG_WARN = [
   { re: /\brequest (landing|take ?off|taxi)\b/, why: 'At an Air/Ground field you announce intentions (“taxiing for 24”), you don’t request permission.' },
   { re: /\binstructions\b/, why: 'Air/Ground operators can’t give instructions: ask for airfield information.' },
 ];
+
+// What the operator says about traffic gets an answer ("looking", or "roger" when there is none), and the answer is
+// not the next call: on the early leg that follows, "Looking, G-IA" was taken for the final call and the real one then
+// drew "say again". An Air/Ground operator doesn't chase an acknowledgement, so none is required.
+function trafficInfo(s, id, traffic, text) {
+  return s.atc(text, { reply: { id, optional: true, timeout: 8,
+    items: traffic ? [{ ...TRAFFIC_ACK(), hard: false }] : [], model: traffic ? 'Looking, {CALL}' : 'Roger, {CALL}' } });
+}
 
 // Carlisle Radio, from the first call to clear of the runway: the same airfield whichever way you come in. An
 // Air/Ground operator gives information and asks how you would like to join, because nobody there can tell you
@@ -48,7 +56,10 @@ async function arriveCarlisle(s, { from, where, position, pending = 'Call Carlis
   }
   if (join === 'overhead' || join === 'downwind') {
     await s.expect({ id: 'downwind', cue: 'Downwind for 24.', items: [...tag, P('downwind', ['downwind']), P('runway', ['24'], { soft: true })], model: '{CALL}, downwind 24' });
-    if (!ctx.blind) await s.atc(s.chance(0.5) ? '{CALL}, roger, one ahead, a Cessna 152 on base' : '{CALL}, roger, no reported traffic');
+    if (!ctx.blind) {
+      const traffic = s.chance(0.5);
+      await trafficInfo(s, 'downwind-ack', traffic, traffic ? '{CALL}, roger, one ahead, a Cessna 152 on base' : '{CALL}, roger, no reported traffic');
+    }
     await s.leg('Base leg', 1.2, { early: true });
   } else if (join === 'base') {
     await s.leg('Joining on a long left base', 4, { early: true });
@@ -145,7 +156,10 @@ export const carlisleSouth = {
       model: '{CALL}, request frequency change to Carlisle Radio 123.605' });
     const f = asked && (asked.norm.match(/\b12[0-9]\.\d+\b/) || [])[0];
     if (f && f !== '123.605') s.note(`Carlisle Radio is 123.605, and you said ${f}.`);
-    await s.atc(asked ? '{CALL}, frequency change approved' : '{CALL}, Basic Service terminated');
+    // Answered ("changing to Carlisle Radio"), that is still London's business: it used to be taken for the first
+    // call to Carlisle Radio, cutting the leg short.
+    await s.atc(asked ? '{CALL}, frequency change approved' : '{CALL}, Basic Service terminated', {
+      reply: { id: 'qsy-ack', optional: true, items: [], model: asked ? 'Changing to Carlisle Radio, {CALL}' : 'Roger, {CALL}' } });
     // A new station: a new frequency, a new voice, and the full callsign again until they shorten it.
     ctx.unit = 'Carlisle Radio'; ctx.abbreviated = false;
     s.setRadio({ unit: 'Carlisle Radio', freq: '123.605' });
@@ -180,7 +194,8 @@ export const carlisleDeparture = {
     await s.atc('{CALL}, roger');
     await s.leg('Holding point, power checks', 0.4, { early: true });
     await s.expect({ id: 'lineup', cue: 'Checks complete, ready to go.', items: [P('lining up', ['lining up', 'line up', 'entering', 'departing'])], model: '{CALL}, lining up runway 24' });
-    await s.atc(s.chance(0.3) ? '{CALL}, roger, traffic is a Cessna 152 reported late downwind' : '{CALL}, roger, no reported traffic, surface wind 240 degrees 10 knots');
+    const traffic = s.chance(0.3);
+    await trafficInfo(s, 'lineup-ack', traffic, traffic ? '{CALL}, roger, traffic is a Cessna 152 reported late downwind' : '{CALL}, roger, no reported traffic, surface wind 240 degrees 10 knots');
     await s.leg('Climbing out, turning north', 2.5, { early: true });
     await s.expect({ id: 'leaving', cue: 'Leaving the ATZ to the north.', items: [P('leaving', ['leaving', 'departing', 'changing']), P('frequency', ['scottish', '119.875', 'frequency'], { soft: true, why: 'Say which frequency you’re changing to.' })], model: '{CALL}, leaving the ATZ to the north, changing to Scottish Information 119.875' });
     await s.atc('{CALL}, roger');

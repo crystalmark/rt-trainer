@@ -6,9 +6,9 @@ import { PROFILES } from '../js/config.js';
 import { fakeClock, fakeRadio, seeded, perfectPilot, sendWhenClear } from './helpers.mjs';
 import { listenScenario, LISTEN_UNITS } from '../js/scenarios/listen.js';
 import { computeDebrief } from '../js/debrief.js';
-import { briefLine, P, SQUAWK } from '../js/scenarios/common.js';
+import { briefLine, P, SQUAWK, useSquawk } from '../js/scenarios/common.js';
 import { AREAS } from '../js/areas/index.js';
-import { parseRoute } from '../js/route.js';
+import { parseRoute, planRoute } from '../js/route.js';
 import { customScenario } from '../js/scenarios/custom.js';
 
 function run(scenario, profile, seed, { settings = {}, pilot = perfectPilot, override } = {}) {
@@ -468,4 +468,187 @@ test('Carlisle Radio asks how you would like to join, and flies the join you cho
     if (!ids.includes('overhead')) assert.ok(!calls.includes('overhead'), `${answer}: flew the overhead anyway`);
     assert.match(events.at(-1).summary, summary);
   }
+});
+
+// A controller's call to a similar callsign is a trap: answering it is the mistake. Judged by timing alone, it also
+// caught the pilot's own calls made in the gap after that exchange, which is where the briefing says to make them.
+function trapScenario(run) {
+  let n = 0;
+  return {
+    id: 'trap', title: 'Trap', unit: 'Leeds Radar', freq: '134.580', briefing: () => [['Aircraft', 'G-CZIA']],
+    traffic: (s, { similar }) => (n++ ? null : [['atc', `${similar}, report Harrogate`, { similar }], [similar, `Wilco, ${similar}`]]),
+    run,
+  };
+}
+
+test('a call made just after a call to a similar callsign is taken as the call it is', async () => {
+  const clock = fakeClock(400), radio = fakeRadio(clock);
+  let engine, called = false;
+  const scenario = trapScenario(async s => {
+    await s.leg('Inbound', 10);
+    await s.expect({ id: 'initial', initial: true, timeout: 240, items: [P('request', ['request'])] });
+    s.end('Done');
+  });
+  engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(1), settings: { trafficDensity: 'busy' },
+    onEvent: ev => {
+      if (!called && ev.kind === 'radio' && /^Wilco/.test(ev.text)) {      // the other aircraft's reply: call straight after it
+        called = true;
+        sendWhenClear(engine, 'Leeds Radar, golf charlie zulu india alpha, request basic service');
+      }
+    } });
+  const events = await engine.start();
+  assert.ok(called, 'the exchange happened');
+  assert.ok(!events.some(e => e.type === 'wrong-callsign'), JSON.stringify(events.find(e => e.type === 'wrong-callsign')));
+  assert.ok(events.some(e => e.type === 'call' && e.id === 'initial'), 'it was the initial call');
+  assert.equal(events.at(-1).summary, 'Done');
+});
+
+test('answering a call meant for a similar callsign is caught, even before the other aircraft replies', async () => {
+  const clock = fakeClock(400), radio = fakeRadio(clock);
+  let engine;
+  const say = radio.say.bind(radio);
+  radio.say = async (...a) => {
+    const res = await say(...a);
+    if (/report Harrogate/.test(a[1])) setImmediate(() => { engine.pilotKeyDown(); engine.pilotTransmission('Wilco, golf india alpha'); });
+    return res;
+  };
+  engine = new Engine({ scenario: trapScenario(async s => { await s.leg('Inbound', 10); s.end('Done'); }), profile: PROFILES[1],
+    radio, clock, rng: seeded(1), settings: { trafficDensity: 'busy' } });
+  const events = await engine.start();
+  assert.ok(events.some(e => e.type === 'wrong-callsign'), 'taken for what it was');
+  assert.ok(!events.some(e => e.type === 'stepped-in'), 'not merely a call in the middle of an exchange');
+  assert.ok(radio.lines.some(l => /negative, that was for G-IT/.test(l[1])));
+});
+
+// "I say again" is the pilot repeating their message: it was taken for a request to repeat, the message was thrown
+// away, and each repeat carried the last one's "I say again" with it.
+test('repeats do not pile up, and a pilot saying "I say again" is heard', async () => {
+  const clock = fakeClock(400), radio = fakeRadio(clock);
+  let engine, n = 0;
+  const replies = ['say again, golf india alpha', 'say again, golf india alpha', 'golf india alpha, I say again, altitude 2000 feet'];
+  const scenario = {
+    id: 'repeat', title: 'Repeat', unit: 'Leeds Radar', freq: '134.580', briefing: () => [['Aircraft', 'G-CZIA']],
+    async run(s) {
+      s.ctx.abbreviated = true;
+      await s.atc('{CALL}, report your altitude', { reply: { id: 'altitude', items: [P('altitude', ['feet'])] } });
+      s.end('Done');
+    },
+  };
+  engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(1), settings: { trafficDensity: 'quiet' },
+    onEvent: ev => { if (ev.kind === 'radio' && ev.speaker === 'atc' && n < replies.length) sendWhenClear(engine, replies[n++]); } });
+  const events = await engine.start();
+  const repeats = radio.lines.map(l => l[1]).filter(t => /I say again/.test(t));
+  assert.deepEqual(repeats, ['G-IA, I say again, report your altitude', 'G-IA, I say again, report your altitude']);
+  assert.ok(events.some(e => e.type === 'call' && e.id === 'altitude' && /I say again/.test(e.text)), 'the repeated message was the answer');
+});
+
+// "Confirm squawk 5634" asks a question. The answer went nowhere, was logged as unexpected and drew "say again".
+test('the answer to "confirm squawk" is taken, not met with "say again"', async () => {
+  const clock = fakeClock(400), radio = fakeRadio(clock);
+  let engine;
+  const scenario = {
+    id: 'confirm', title: 'Confirm', unit: 'Leeds Radar', freq: '134.580', briefing: () => [['Aircraft', 'G-CZIA']],
+    async run(s) {
+      await s.expect({ id: 'initial', initial: true, items: [] });
+      s.ctx.abbreviated = true;
+      await useSquawk(s, '5634');
+      await s.pause(30);
+      s.end('Done');
+    },
+  };
+  engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(1), settings: { trafficDensity: 'quiet' },
+    onEvent: ev => {
+      if (ev.kind === 'awaiting' && ev.id === 'initial') sendWhenClear(engine, 'Leeds Radar, golf charlie zulu india alpha');
+      // Slow to set it, and chased: sets it and says so.
+      if (ev.kind === 'radio' && /confirm squawk 5634/.test(ev.text)) { engine.setSquawk('5634'); sendWhenClear(engine, 'squawking 5634, golf india alpha'); }
+    } });
+  const events = await engine.start();
+  assert.ok(events.some(e => e.type === 'late-action'), 'chased');
+  assert.ok(!events.some(e => e.type === 'unexpected'), JSON.stringify(events.filter(e => e.type === 'unexpected')));
+  assert.ok(!radio.lines.some(l => /say again/.test(l[1])), 'no "say again"');
+  assert.ok(events.some(e => e.type === 'action' && e.id === 'squawk-5634'), 'and the squawk counts as set');
+});
+
+// Carlisle's "frequency change approved" and traffic information get an answer, and the leg after them takes an early
+// call: the answer was taken for that call, the leg cut short, and the real call then met with "say again".
+test('at Carlisle, an acknowledgement is not taken for the next call', async () => {
+  const ACK = /frequency change approved|Basic Service terminated|one ahead|traffic is a Cessna|no reported traffic/;
+  for (const id of ['carlisle-south', 'carlisle-arrival', 'carlisle-departure']) {
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const clock = fakeClock(4000), radio = fakeRadio(clock);
+      let handler = () => {};
+      const engine = new Engine({ scenario: SCENARIOS.find(s => s.id === id), profile: PROFILES[1], radio, clock, rng: seeded(seed),
+        settings: { trafficDensity: 'quiet' }, onEvent: e => handler(e) });
+      const perfect = perfectPilot(engine);
+      handler = ev => {
+        // Like a pilot: answered when heard, not when the script is ready for the answer.
+        if (ev.kind === 'radio' && ev.meta?.toPilot && ACK.test(ev.text)) {
+          sendWhenClear(engine, /one ahead|traffic is/.test(ev.text) ? 'Looking, golf india alpha' : 'Roger, golf india alpha');
+          return;
+        }
+        if (ev.kind === 'awaiting' && /-ack$|^terminated$/.test(ev.id || '')) return;    // already answered
+        perfect(ev);
+      };
+      const events = await engine.start();
+      const taken = events.filter(e => e.type === 'call' && /^(Looking|Roger), golf india alpha$/.test(e.text));
+      assert.ok(taken.every(e => /-ack$|^terminated$/.test(e.id)), `${id} seed ${seed}: taken as ${taken.map(e => e.id)}`);
+      assert.ok(!events.some(e => e.type === 'unexpected'), `${id} seed ${seed}: ${JSON.stringify(events.filter(e => e.type === 'unexpected'))}`);
+    }
+  }
+});
+
+// Off script, the wait for the pilot was taken for a readback wait whenever the script had last been waiting for one:
+// the traffic stopped for good, and with no timeout on that wait a silent pilot was never let go.
+test('off script, the frequency stays busy and a silent pilot is let go after fifteen minutes', { timeout: 30000 }, async () => {
+  const clock = fakeClock(4000), radio = fakeRadio(clock);
+  let engine;
+  const scenario = {
+    id: 'free', title: 'Free', unit: 'Leeds Radar', freq: '134.580', briefing: () => [['Aircraft', 'G-CZIA']],
+    traffic: () => [['Channex 47', 'Leeds Radar, Channex 47, descending flight level 70'], ['atc', 'Channex 47, roger']],
+    async run(s) {
+      s.ctx.abbreviated = true;
+      await s.atc('{CALL}, squawk 5634', { readback: [SQUAWK('5634')], model: 'Squawk 5634, {CALL}' });
+      await s.pause(3600);
+    },
+  };
+  const claude = { atc: async () => ({ transmissions: ['G-IA, roger, report ready'] }) };
+  engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(1), claude, settings: { trafficDensity: 'busy' },
+    onEvent: ev => { if (ev.kind === 'awaiting' && ev.waitKind === 'readback') sendWhenClear(engine, 'golf india alpha, request diversion to Harrogate due weather'); } });
+  const events = await engine.start();
+  const off = events.findIndex(e => e.type === 'offscript');
+  assert.ok(off > 0, 'off script from the readback');
+  assert.ok(events.slice(off).some(e => e.type === 'traffic'), 'and the traffic carried on');
+  assert.equal(events.at(-1).type, 'end', 'and fifteen minutes of silence ended it');
+});
+
+// The map's Direct to, a moment after the pilot's reply: the reply's wait, still asleep, woke to find the change and
+// took it, on a promise already settled. The change was lost and the script carried on along the old route.
+test('a change of route made just after a reply is not lost', async () => {
+  const leeds = AREAS.find(a => a.id === 'leeds');
+  const r = parseRoute('Skipton to Harrogate at 2000 ft', leeds);
+  const plan = planRoute(leeds, r.points, r.altitude);
+  let resumed = null;
+  const scenario = {
+    id: 'reroute', title: 'Reroute', unit: 'Leeds Radar', freq: '134.580', briefing: () => [['Aircraft', 'G-CZIA']],
+    routeChange: () => ({ plan, points: [], approval: false }),
+    async run(s) {
+      s.fly(plan);
+      await s.expect({ id: 'report', items: [], timeout: 60 });
+      await s.pause(10);                                  // on to whatever comes next when the change is made
+      s.end('The change of route was lost');
+    },
+    async resume(s, change) { resumed = change; s.end('Rerouted'); },
+  };
+  const clock = fakeClock(20), radio = fakeRadio(clock);
+  let engine;
+  engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(1), settings: { trafficDensity: 'quiet' },
+    onEvent: ev => {
+      if (ev.kind === 'awaiting' && ev.id === 'report') setImmediate(() => {
+        engine.pilotKeyDown(); engine.pilotTransmission('golf charlie zulu india alpha, overhead Skipton');
+        setTimeout(() => engine.changeRoute({ action: 'direct', place: r.points.at(-1) }), 2);
+      });
+    } });
+  const events = await engine.start();
+  assert.ok(resumed, events.at(-1).summary);
+  assert.equal(events.at(-1).summary, 'Rerouted');
 });

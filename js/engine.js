@@ -2,7 +2,7 @@
 // readback checking, corrections, missed calls, blocked transmissions and an optional
 // hand-over to Claude when the pilot leaves the script.
 // No DOM access here: the browser app and the Node tests both drive it through adapters.
-import { match, isSayAgain, looksLikeRequest } from './matcher.js';
+import { match, hasAny, isSayAgain, looksLikeRequest } from './matcher.js';
 import { speakable, phoneticCallsign, callsignForms, tokens } from './normalize.js';
 import { mapPoints } from './route.js';
 
@@ -28,6 +28,8 @@ export const DEFAULT_SETTINGS = {
 };
 
 const DENSITY_GAP = { quiet: [70, 150], normal: [25, 70], busy: [8, 30] };
+// Words in a call to a similar callsign that don't make an answer to it: "report", and "report your position".
+const TRAP_WORDS = new Set(['report', 'your', 'position', 'when', 'the']);
 
 export class Engine {
   constructor({ scenario, profile, settings = {}, radio, clock, rng = Math.random, claude = null, onEvent = () => {} }) {
@@ -198,6 +200,15 @@ export class Engine {
     }
     this.log('pilot', { text });
     this.emit('radio', { speaker: 'pilot', text });
+    // Answering a call made to a similar callsign is the mistake itself, whenever it comes: in the gap before the
+    // other aircraft has replied as much as after, which used to count only as stepping into their exchange.
+    if (this.answersTrap(text)) {
+      const { call } = this.similarWindow;
+      this.steppedIn = false; this.similarWindow = null;
+      this.log('wrong-callsign', { text, forCall: call });
+      this.queueAtc(`{CALL}, negative, that was for ${call}`, { delay: 0.8 });
+      return;
+    }
     if (this.steppedIn) {
       this.steppedIn = false;
       this.log('stepped-in', { text });
@@ -205,15 +216,28 @@ export class Engine {
       this.queueAtc('{CALL}, standby', { delay: 0.5, bypassLock: true });
       return;
     }
-    if (this.similarWindow && this.now() < this.similarWindow.until &&
-        (!this.waiter || (this.lastWaitKind === 'call' && match(text, this.currentSpec || [], this.ctx).hardRatio < 0.5))) {
-      this.log('wrong-callsign', { text, forCall: this.similarWindow.call });
-      this.queueAtc(`{CALL}, negative, that was for ${this.similarWindow.call}`, { delay: 0.8 });
-      this.similarWindow = null;
-      return;
-    }
     if (this.waiter) { const w = this.waiter; this.waiter = null; w(tx); return; }
     this.unsolicited(tx);
+  }
+
+  /**
+   * Did the pilot just answer the call made to a similar callsign? Judged by what they said: an acknowledgement
+   * (wilco, roger), the instruction's own words (the place it named), or a position when that is what it asked for.
+   * Their own business is not an answer however soon it comes: a call naming the unit, a request, a readback of
+   * their own instruction, or what the controller is waiting to hear. Timing alone threw away correct calls made in
+   * the gap after the exchange, which is just where the briefing tells you to make them.
+   */
+  answersTrap(text) {
+    const w = this.similarWindow;
+    if (!w || this.now() >= w.until) return false;
+    if (hasAny(text, [this.ctx.unit, 'request'])) return false;
+    if (this.waiter && this.lastWaitKind === 'readback') return false;
+    const spec = this.waiter && this.currentSpec;
+    if (spec && spec.some(i => i.hard !== false) && match(text, spec, this.ctx).hardRatio >= 0.5) return false;
+    const unit = new Set(tokens(this.ctx.unit));
+    const named = tokens(stripCallsign(w.text)).filter(t => t.length > 2 && !unit.has(t) && !TRAP_WORDS.has(t));
+    return hasAny(text, ['wilco', 'roger', ...named])
+      || (/report your position/i.test(w.text) && hasAny(text, ['miles', 'overhead', 'altitude', 'feet']));
   }
 
   // ---------- things the pilot does rather than says (the transponder, the orbit) ----------
@@ -251,7 +275,8 @@ export class Engine {
         if (done()) { this.log('action', { id, text: cue || id }); return true; }
         if (i >= tries) break;
         this.log('late-action', { id });
-        if (nudge) await this.atc(nudge);
+        // "Confirm squawk 5634" asks a question, and the answer to it used to be met with "say again".
+        if (nudge) await this.atc(nudge, { reply: { id: `${id}-confirm`, items: [], optional: true } });
       }
       this.log('no-action', { id, text: cue || id });
       return false;
@@ -277,10 +302,10 @@ export class Engine {
 
   unsolicited(tx) {
     if (isSayAgain(tx.text) && this.lastToPilot) {
-      this.queueAtc(`{CALL}, I say again, ${stripCallsign(this.lastToPilot)}`);
+      this.queueAtc(repeatOf(this.lastToPilot));
       return;
     }
-    if (this.mode === 'free') { this.freeQueue.push(tx); this.freeKick?.(); return; }
+    if (this.mode === 'free') { this.freeQueue.push(tx); return; }
     // Before your first call, whatever you transmit IS your first call — even if the script had not got round
     // to asking for it, because the briefing tells you to call when there is a gap. It used to arrive as
     // "unexpected", and anything with "request" in it handed the whole flight to Claude. Keep it for the
@@ -305,6 +330,9 @@ export class Engine {
       const tick = async () => {
         while (!done) {
           await this.clock.sleep(250);
+          // Answered while asleep: an abort that has come since (the map's Direct to) is for whatever the scenario
+          // does next. Taken here, on a promise already settled, it was lost and the script stalled.
+          if (done) return;
           if (!this.running) { done = true; this.waiter = null; reject(new Ended()); return; }
           if (this.abortReason) { done = true; this.waiter = null; const r = this.abortReason; this.abortReason = null; reject(r); return; }
           if (!this.paused && !this.radio.busy && !this.keyed && !this.channelLocked) waited += 250;
@@ -377,7 +405,9 @@ export class Engine {
   }
 
   navRate() {
-    const busy = this.radio.busy || this.channelLocked || this.waiter || this.keyed || this.exchangeActive;
+    // Off script the wait for the pilot is always up: only the gap after the controller spoke to them counts.
+    const waiting = this.mode === 'free' ? this.now() < this.trafficHoldUntil : !!this.waiter;
+    const busy = this.radio.busy || this.channelLocked || waiting || this.keyed || this.exchangeActive;
     return busy ? 1 : this.settings.timeScale * this.boost;
   }
 
@@ -533,7 +563,7 @@ export class Engine {
       }
       if (isSayAgain(tx.text)) {
         this.log('say-again', { text: tx.text });
-        await this.atc(`{CALL}, I say again, ${stripCallsign(original)}`);
+        await this.atc(repeatOf(original));
         continue;
       }
       const { text, r } = this.bestMatch(tx, current, 'readback');
@@ -581,7 +611,7 @@ export class Engine {
         return null;
       }
       if (isSayAgain(tx.text) && this.lastToPilot) {
-        await this.atc(`{CALL}, I say again, ${stripCallsign(this.lastToPilot)}`);
+        await this.atc(repeatOf(this.lastToPilot));
         continue;
       }
       const { text, r } = this.bestMatch(tx, extras.length ? [...items, ...extras] : items, 'call');
@@ -665,7 +695,7 @@ export class Engine {
               const line = ex[i];
               if (i) await this.sleep(this.rand(0.5, 1.4) * 1000, false);
               await this.transmit(line[0], line[1], { traffic: true });
-              if (line[2] && line[2].similar) this.similarWindow = { until: this.now() + 8000, call: line[2].similar };
+              if (line[2] && line[2].similar) this.similarWindow = { until: this.now() + 8000, call: line[2].similar, text: this.fill(line[1]) };
             }
           } finally { this.exchangeActive = false; }
         });
@@ -679,16 +709,18 @@ export class Engine {
 
   async freeMode(firstTx) {
     this.mode = 'free';
+    // Nothing the script was waiting for applies now. Left as it was (a readback, often), the wait for the pilot below
+    // counted as the controller waiting for a readback: traffic stopped for good, and the route flew at real time.
+    this.lastWaitKind = 'free'; this.currentSpec = null;
     this.log('offscript', { text: firstTx.text });
     this.emit('toast', { level: 'info', text: 'Off script: Claude is now the controller (replies take 1–3 s).' });
     this.freeQueue = [firstTx];
-    let quiet = 0;
+    let quiet = 0;                     // minutes of quiet frequency with nothing from the pilot
     while (this.running) {
       if (!this.freeQueue.length) {
-        await new Promise(r => { this.freeKick = r; setTimeout(r, 1000); });
-        this.freeKick = null;
-        quiet++;
-        if (quiet > 900) break;       // 15 minutes of silence ends the session
+        const next = await this.waitPilot(60).catch(() => null);
+        if (next) { this.freeQueue.push(next); continue; }
+        if (!this.running || ++quiet >= 15) break;       // fifteen minutes of silence ends the session
         continue;
       }
       quiet = 0;
@@ -712,18 +744,18 @@ export class Engine {
       }
       if (resp.position) this.emit('position', { label: resp.position });
       if (resp.end) { this.summary = resp.summary || 'Ended off script'; break; }
-      // route the next transmissions into the queue
-      while (this.running && !this.freeQueue.length) {
-        const nxt = await this.waitPilot(null).catch(() => null);
-        if (!nxt) break;
-        this.freeQueue.push(nxt);
-      }
     }
   }
 }
 
 function stripCallsign(text) {
   return String(text).replace(/^\s*(\{CALL\}|\{AB\}|\{CS\}|[A-Z]-[A-Z]{2,4})\s*,\s*/, '');
+}
+
+// A repeat is the message again: not the callsign, and not the "I say again" (or "negative, I say again") of the last
+// repeat, which used to pile up: "I say again, I say again, report your altitude".
+function repeatOf(text) {
+  return `{CALL}, I say again, ${stripCallsign(text).replace(/^(negative,\s*)?(I say again,\s*)+/i, '')}`;
 }
 
 function summarise(r) {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalize, findCallsign, tokens, speakable } from '../js/normalize.js';
-import { match, hasAny } from '../js/matcher.js';
+import { match, hasAny, isSayAgain } from '../js/matcher.js';
 import { AREAS } from '../js/areas/index.js';
 import { BASIC, SQUAWK, ROS, P } from '../js/scenarios/common.js';
 import { rowsFrom, stats, append, load, clear } from '../js/heard.js';
@@ -295,4 +295,14 @@ test('an abbreviated callsign survives a clipped alpha too', () => {
   assert.equal(form('golf India Al'), 'abbr');
   assert.equal(form('golf India requesting basic service'), null, 'the letters are not there');
   assert.equal(form('golf India hotel'), null, 'a different aircraft');
+});
+
+// "I say again" is the pilot repeating their own message, usually because ATC asked: it was taken as the pilot asking
+// ATC to repeat, and the message thrown away. The words as heard decide it, because normalised, "I" is India.
+test('"I say again" is a message, "say again" a request', () => {
+  assert.equal(isSayAgain('G-CZIA, I say again, overhead Salts Mill'), false);
+  assert.equal(isSayAgain('golf india alpha I say again Salts Mill'), false);
+  assert.equal(isSayAgain('say again, golf india alpha'), true);
+  assert.equal(isSayAgain('golf charlie zulu, say again'), true, 'a callsign ending in India is not "I"');
+  assert.equal(isSayAgain('G-IA, request you repeat the QNH'), true);
 });

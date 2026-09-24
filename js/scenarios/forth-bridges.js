@@ -9,7 +9,7 @@
 // East Fortune: 118.755, elevation 115 ft, runways 29L/11R and 25L/07R, overhead join 2000 ft, circuit 1000 ft
 // (the flexwing school based there); 29 and 25 left-hand, 11 and 07 right-hand (Tim). Air/Ground when someone is
 // on the radio, blind calls when not. Edinburgh Approach 121.205 and the CTR from the AIP (js/areas/edinburgh.js).
-import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, details, initialCall, useSquawk, edinburghTraffic } from './common.js';
+import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, TERMINATED_ACK, details, initialCall, useSquawk, edinburghTraffic } from './common.js';
 import { AREAS } from '../areas/index.js';
 import { planRoute, whereIs } from '../route.js';
 
@@ -209,7 +209,7 @@ export const forthBridges = {
         readback: [...(x ? [SQUAWK('7000')] : []), P('frequency change approved', ['frequency change', 'changing'], { soft: true })],
         model: (x ? 'Squawk 7000, ' : '') + 'frequency change approved, {CALL}' });
     } else {
-      await s.atc(x ? '{CALL}, Basic Service terminated, squawk 7000' : '{CALL}, Basic Service terminated');
+      await s.atc(x ? '{CALL}, Basic Service terminated, squawk 7000' : '{CALL}, Basic Service terminated', { reply: TERMINATED_ACK(x) });
     }
     await useSquawk(s, '7000', { chase: false });
 
