@@ -53,7 +53,17 @@ const listenCard = () => {
 };
 const choices = () => [...SCENARIOS, ...CUSTOM, listenCard()];
 
-function show(id) { for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== id; window.scrollTo(0, 0); }
+function display(id) { for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== id; window.scrollTo(0, 0); }
+// Android's back gesture (an edge swipe, easy to make with a thumb on the PTT) left the page, and in the installed app
+// closed it: a flight thrown away, with no debrief. So every screen past setup is one step in the browser's history,
+// and Back comes here first (see the popstate handler at the end).
+function show(id) {
+  const above = !!history.state?.screen && history.state.screen !== 'setup';
+  if (id === 'setup') { if (above) history.back(); }
+  else if (above) history.replaceState({ screen: id }, '');
+  else history.pushState({ screen: id }, '');
+  display(id);
+}
 const profile = () => state.profiles.find(p => p.id === state.profileId) || state.profiles[0];
 const choice = () => choices().find(s => s.id === state.scenarioId) || SCENARIOS[0];
 const scenario = () => state.built || choice();
@@ -731,5 +741,19 @@ $('d-heard-clear').addEventListener('click', () => {
 });
 $('d-again').addEventListener('click', renderBrief);
 $('d-claude-btn').addEventListener('click', claudeDebrief);
+// Back: in flight, stay unless the pilot says to end it (then the debrief, as with End); anywhere else, back to setup.
+history.replaceState({ screen: 'setup' }, '');
+window.addEventListener('popstate', e => {
+  if (state.engine?.running) {
+    history.pushState({ screen: 'flight' }, '');
+    if (confirm(scenario().listen ? 'Stop listening?' : 'End this flight and see the debrief?')) state.engine.stop();
+    return;
+  }
+  const id = e.state?.screen || 'setup';
+  if (id === 'setup') renderSetup();
+  display(id);
+});
+// A reload, or the tab closed, in flight: the browser asks first.
+window.addEventListener('beforeunload', e => { if (state.engine?.running) { e.preventDefault(); e.returnValue = ''; } });
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 window.__rt = state; // debugging / automated tests
