@@ -30,9 +30,12 @@ const TEENS = { ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fif
 const TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
 export const HESITATION = /^(e+r+m*|u+h+|u+m+|a+h+|e+h+|h+m+|m+h+m*)$/i;
 
+// Words written with a hyphen that are not registrations. "X-ray" is how the alphabet spells it and how the recogniser
+// writes it: taken for a registration it came out as the letters x r a y, and one with an X lost its callsign.
+const HYPHENATED = [[/\bx-ray\b/g, 'xray'], [/\be-mail/g, 'email']];
+
 // Multi-word and spelling variants folded before tokenising.
 const PHRASES = [
-  [/\bx-ray\b/g, 'xray'],
   [/\b[qu]\s?(?:n|&|and)\s?h(?=\s?\d)/g, 'qnh '],   // glued to its number, or the Q heard as "you": unh1015
   [/\bq\.?\s?n\.?\s?h\.?\b/g, 'qnh'], [/\bq\s?(and|&)\s?h\b/g, 'qnh'],
   [/\bq\.?\s?f\.?\s?e\.?\b/g, 'qfe'],
@@ -141,6 +144,7 @@ function interpretRun(run) {
 export function normalize(text, { folds = true } = {}) {
   let s = String(text || '').toLowerCase();
   s = s.replace(/(\d),(\d{3})\b/g, '$1$2');           // 3,000 -> 3000
+  for (const [re, rep] of HYPHENATED) s = s.replace(re, rep);
   s = splitRegistrations(s);
   if (folds) for (const [re, rep] of PHRASES) s = s.replace(re, rep);
   s = s.replace(/[^a-z0-9.\s]/g, ' ').replace(/\.(?!\d)/g, ' ').replace(/(^|\s)\.(\d)/g, '$1$2');

@@ -306,3 +306,13 @@ test('"I say again" is a message, "say again" a request', () => {
   assert.equal(isSayAgain('golf charlie zulu, say again'), true, 'a callsign ending in India is not "I"');
   assert.equal(isSayAgain('G-IA, request you repeat the QNH'), true);
 });
+
+// "X-ray" is how the alphabet spells it, and how the recogniser writes it. Split into letters as if it were a
+// registration, it came out as x r a y, and a registration with an X lost its callsign.
+test('X-ray is one letter, so a registration with an X is still found', () => {
+  assert.equal(normalize('golf charlie x-ray tango lima'), 'g c x t l');
+  assert.equal(findCallsign(tokens('golf charlie x-ray tango lima'), 'G-CXTL').form, 'full');
+  assert.equal(findCallsign(tokens('squawk 5634 golf x-ray yankee'), 'G-BOXY').form, 'abbr');
+  assert.equal(normalize('details sent by e-mail'), 'details sent by email');
+  assert.equal(normalize('G-CLHP'), 'g c l h p', 'a registration is still spelt out');
+});
