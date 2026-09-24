@@ -353,6 +353,54 @@ test('an empty transmission in the middle of an exchange does not cost the next 
   assert.equal(events.at(-1).summary, 'Done');
 });
 
+// Calling in the middle of someone else's exchange draws "standby", and "pass your message" once it is over: but only
+// then, and only while it is still wanted.
+function steppedInto({ hold = 0, afterStandby = null } = {}) {
+  const clock = fakeClock(100), radio = fakeRadio(clock);
+  let engine, n = 0;
+  const say = radio.say.bind(radio);
+  radio.say = async (speaker, display, ...rest) => {
+    const res = await say(speaker, display, ...rest);
+    if (/turn left heading 140/.test(display)) {                    // into the gap before the reply
+      engine.pilotKeyDown();
+      clock.sleep(hold).then(() => engine.pilotTransmission('Leeds Radar, golf charlie zulu india alpha, request basic service'));
+    }
+    if (/standby/.test(display) && afterStandby) afterStandby(engine);
+    return res;
+  };
+  const scenario = {
+    id: 'standby', title: 'Standby', unit: 'Leeds Radar', freq: '134.580', briefing: () => [['Aircraft', 'G-CZIA']],
+    traffic: () => (n++ ? null : [['atc', 'Channex 47, turn left heading 140'], ['Channex 47', 'Left heading 140, Channex 47']]),
+    async run(s) { await s.pause(120); s.end('Done'); },
+  };
+  engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(1), settings: { trafficDensity: 'busy' } });
+  return engine.start();
+}
+const heardAt = (events, re) => events.find(e => (e.type === 'atc' || e.type === 'traffic') && re.test(e.text))?.t;
+const onFrequency = events => JSON.stringify(events.filter(e => ['atc', 'traffic', 'pilot'].includes(e.type)).map(e => `${e.t} ${e.text}`));
+
+test('after "standby", "pass your message" comes once the exchange is over', async () => {
+  const events = await steppedInto();
+  assert.ok(events.some(e => e.type === 'stepped-in'));
+  const reply = heardAt(events, /Left heading 140/), back = heardAt(events, /pass your message/);
+  assert.ok(back != null && back >= reply && back - reply < 10, onFrequency(events));
+});
+
+// It used to be settled when queued: a pilot who called again after "standby" was then asked for the message anyway.
+test('"pass your message" is not asked of a pilot who has called again since "standby"', async () => {
+  const events = await steppedInto({ afterStandby: engine => sendWhenClear(engine, 'Leeds Radar, golf charlie zulu india alpha, request basic service') });
+  assert.equal(events.filter(e => e.type === 'pilot').length, 2, 'they called again');
+  assert.equal(heardAt(events, /pass your message/), undefined, onFrequency(events));
+});
+
+// The controller holds the rest of the exchange for a pilot who is transmitting, but only for 15 s. A call still going
+// after that, and after the reply, ended with the exchange over: "pass your message" then waited for the next one.
+test('a call that outlasts the exchange it stepped into is still asked for straight away', async () => {
+  const events = await steppedInto({ hold: 20000 });
+  const stepped = events.find(e => e.type === 'stepped-in')?.t, back = heardAt(events, /pass your message/);
+  assert.ok(stepped != null && back != null && back - stepped < 10, `${stepped} → ${back}: ${onFrequency(events)}`);
+});
+
 // Off script, a failure (here a reply that isn't what was asked for) escaped past finish(): no end, no debrief, and
 // End did nothing.
 test('off script, a flight that fails still ends with a debrief', async () => {

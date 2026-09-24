@@ -58,7 +58,7 @@ export class Engine {
     this.trafficHoldUntil = 0;
     this.lastToPilot = null;
     this.similarWindow = null;
-    this.standbyPending = false;
+    this.standbyPending = null;   // the unit that said "standby", and so owes the pilot "pass your message"
     this.blocked = null;
     this.keyed = false;
     this.boost = 1;                // > 1 while skipping ahead down a leg
@@ -212,10 +212,15 @@ export class Engine {
     if (this.steppedIn) {
       this.steppedIn = false;
       this.log('stepped-in', { text });
-      this.standbyPending = !this.ctx.blind;
+      if (this.ctx.blind) return;
+      this.standbyPending = this.ctx.unit;
       this.queueAtc('{CALL}, standby', { delay: 0.5, bypassLock: true });
+      // A long call can outlast the exchange it stepped into (the controller holds off only so long), and then there is
+      // nothing left to finish: "pass your message" waited for the next exchange, minutes away, or for ever.
+      if (!this.exchangeActive) this.passYourMessage();
       return;
     }
+    this.standbyPending = null;          // a call taken since "standby" is their message: nothing to ask for now
     if (this.waiter) { const w = this.waiter; this.waiter = null; w(tx); return; }
     this.unsolicited(tx);
   }
@@ -749,12 +754,25 @@ export class Engine {
             }
           } finally { this.exchangeActive = false; }
         });
-        if (this.standbyPending) {
-          this.standbyPending = false;
-          if (this.ctx.unit === unit) await this.withChannel(async () => { await this.sleep(700, false); await this.transmit('atc', '{CALL}, pass your message', { toPilot: true }); });
-        }
+        if (this.standbyPending) await this.passYourMessage();
       }
     } catch (e) { if (!(e instanceof Ended) && !(e instanceof OffScript)) console.error(e); }
+  }
+
+  /**
+   * After "standby", back to the pilot once the exchange is over. Decided as it goes out, not when it was queued: a
+   * pilot who has called again since, or changed frequency, is not asked for a message they have already passed.
+   */
+  async passYourMessage() {
+    try {
+      await this.withChannel(async () => {
+        do { await this.sleep(700, false); } while (this.radio.busy);      // "standby" goes out first
+        await this.holdForPilot();                                          // keyed meanwhile: what they say decides it
+        const owed = this.standbyPending;
+        this.standbyPending = null;
+        if (owed && owed === this.ctx.unit) await this.transmit('atc', '{CALL}, pass your message', { toPilot: true });
+      });
+    } catch (e) { if (!(e instanceof Ended)) throw e; }
   }
 
   async freeMode(firstTx) {
