@@ -2,6 +2,9 @@
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
+<!-- Only this site's own scripts and styles run, and the only place data goes is the Claude API: anything injected
+     (into shared storage, say) can neither run inline nor send the API key anywhere else. Nothing here is inline. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; connect-src https://api.anthropic.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>RT Trainer</title>
 <meta name="description" content="Radio telephony practice for UK VFR pilots: scripted ATC, push-to-talk and a debrief.">

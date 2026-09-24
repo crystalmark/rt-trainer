@@ -2,7 +2,7 @@
 // they are here because a missing id and a toast nobody can see both look exactly like "the button does nothing".
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../js/main.js', import.meta.url), 'utf8');
@@ -28,4 +28,22 @@ test('a toast never takes a press meant for what is under it', () => {
   const css = readFileSync(new URL('../css/app.css', import.meta.url), 'utf8');
   const rule = css.match(/^\.toast\s*\{[^}]*\}/m)?.[0] || '';
   assert.match(rule, /pointer-events:\s*none/);
+});
+
+// The page runs under a Content-Security-Policy, which it can only because nothing in it is inline: no inline scripts
+// or event handlers, no style attributes, no eval. Add one and the browser quietly refuses it, and a button stops working.
+test('the page has a CSP ahead of what it governs, and nothing inline for it to refuse', () => {
+  const csp = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/)?.[1] || '';
+  assert.match(csp, /(^|; )script-src 'self'(;|$)/);
+  assert.match(csp, /(^|; )connect-src https:\/\/api\.anthropic\.com(;|$)/);
+  assert.ok(html.indexOf('Content-Security-Policy') < html.search(/<link|<script/), 'before the first stylesheet or script');
+  const body = html.replace(/<meta[^>]*>/g, '');
+  assert.ok(!/<script(?![^>]*\bsrc=)/.test(body), 'an inline script');
+  assert.ok(!/\son[a-z]+\s*=/i.test(body), 'an inline event handler');
+  assert.ok(!/\sstyle\s*=/i.test(body), 'a style attribute');
+  const dir = new URL('../js/', import.meta.url);
+  for (const f of readdirSync(dir, { recursive: true }).filter(f => f.endsWith('.js'))) {
+    const src = readFileSync(new URL(f, dir), 'utf8');
+    assert.ok(!/\sstyle=["'$]|setAttribute\(\s*['"]style|\son[a-z]+=["']|\beval\(|new Function\(/.test(src), `${f}: something the CSP would refuse`);
+  }
 });

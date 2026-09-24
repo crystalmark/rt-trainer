@@ -22,8 +22,15 @@ const store = {
   set(k, v) { try { localStorage.setItem('rt.' + k, JSON.stringify(v)); } catch { /* storage off */ } },
 };
 
+// Storage is shared with the other apps on crystalmark.co.uk, so what comes back is only taken if it has the shape this
+// page writes, and it is escaped wherever it is shown: planted there, markup would otherwise run at every launch.
+const isProfile = p => p && typeof p.id === 'string' && typeof p.reg === 'string' && typeof p.type === 'string'
+  && Number.isFinite(p.speedKt) && typeof p.transponder === 'boolean';
+const storedProfiles = () => { const v = store.get('profiles', null); return Array.isArray(v) && v.length && v.every(isProfile) ? v : PROFILES; };
+const pastSessions = () => { const v = store.get('history', []); return Array.isArray(v) ? v.filter(x => x && typeof x === 'object' && x.stats) : []; };
+
 const state = {
-  profiles: store.get('profiles', PROFILES),
+  profiles: storedProfiles(),
   profileId: store.get('profileId', PROFILES[0].id),
   scenarioId: store.get('scenarioId', SCENARIOS[0].id),
   showText: store.get('showText', false),
@@ -52,15 +59,15 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '
 // ---------------- setup ----------------
 function renderSetup() {
   $('aircraft').innerHTML = state.profiles.map(p => `
-    <button class="card" type="button" data-p="${p.id}" aria-pressed="${p.id === state.profileId}">
+    <button class="card" type="button" data-p="${esc(p.id)}" aria-pressed="${p.id === state.profileId}">
       <span class="reg">${esc(p.reg)}</span><span>${esc(p.note || p.type)}</span>
-      <span class="tag ${p.transponder ? 'x' : ''}">${p.transponder ? 'Mode S / C' : 'No transponder'} · ${p.speedKt} kt</span>
+      <span class="tag ${p.transponder ? 'x' : ''}">${p.transponder ? 'Mode S / C' : 'No transponder'} · ${esc(p.speedKt)} kt</span>
     </button>`).join('');
   $('aircraft-edit').innerHTML = state.profiles.map((p, i) => `
     <div class="edit-row">
       <label class="opts-l">Registration<input type="text" id="e-reg-${i}" value="${esc(p.reg)}"></label>
       <label class="opts-l">Type as spoken<input type="text" id="e-type-${i}" value="${esc(p.type)}"></label>
-      <label class="opts-l">Cruise kt<input type="number" id="e-kt-${i}" value="${p.speedKt}" min="30" max="140"></label>
+      <label class="opts-l">Cruise kt<input type="number" id="e-kt-${i}" value="${esc(p.speedKt)}" min="30" max="140"></label>
       <label class="check"><input type="checkbox" id="e-x-${i}" ${p.transponder ? 'checked' : ''}> Transponder</label>
     </div>`).join('');
   state.profiles.forEach((p, i) => {
@@ -73,14 +80,14 @@ function renderSetup() {
     });
   });
   $('scenarios').innerHTML = choices().map(s => `
-    <button class="card" type="button" data-s="${s.id}" aria-pressed="${s.id === state.scenarioId}">
+    <button class="card" type="button" data-s="${esc(s.id)}" aria-pressed="${s.id === state.scenarioId}">
       <b>${esc(s.title)}</b><span>${esc(s.subtitle)}</span><span class="mono">${esc(s.unit)} · ${esc(s.freq)}</span>
     </button>`).join('');
   renderRoutePanel();
   renderListenPanel();
-  const h = store.get('history', []);
+  const h = pastSessions();
   $('history-block').hidden = !h.length;
-  $('history').innerHTML = h.slice(0, 8).map(x => `<li>${esc(x.date)} · ${esc(x.title)} · ${esc(x.reg)}: ${x.stats.readbacksRightFirstTime}/${x.stats.readbacks} readbacks right first time, score ${x.stats.averageScore ?? '–'}</li>`).join('');
+  $('history').innerHTML = h.slice(0, 8).map(x => `<li>${esc(x.date)} · ${esc(x.title)} · ${esc(x.reg)}: ${esc(x.stats.readbacksRightFirstTime)}/${esc(x.stats.readbacks)} readbacks right first time, score ${esc(x.stats.averageScore ?? '–')}</li>`).join('');
 }
 
 function renderListenPanel() {
@@ -598,7 +605,7 @@ function onEnd({ events, ctx, summary }) {
   state.lastEnd = { events, ctx, summary, d };
   // What the recogniser made of each transmission, for deciding whether the mishearing table is converging.
   try { heardAppend(localStorage, rowsFrom(events, { scenario: s.id, reg: ctx.reg })); } catch { /* storage off */ }
-  const h = store.get('history', []);
+  const h = pastSessions();
   h.unshift({ date: new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }), title: s.title, reg: ctx.reg, summary, stats: d.stats });
   store.set('history', h.slice(0, 30));
   renderDebrief(s, ctx, summary, d);
