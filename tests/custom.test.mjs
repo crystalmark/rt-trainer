@@ -549,3 +549,79 @@ test('out and back: each report is cued at its own visit', async () => {
     }
   }
 });
+
+// Nobody answers a call that was never made. After four quiet minutes the controller said "pass your message" to an
+// aircraft that had never called, then gave it a service.
+test('a pilot who never calls is not answered', async () => {
+  const events = await flyWith(scenarioFor(ROUTES[0], 3), () => () => {});   // never says a word
+  const toPilot = events.filter(e => e.type === 'atc' && e.toPilot).map(e => e.text);
+  assert.ok(!toPilot.some(t => /pass your message/.test(t)), JSON.stringify(toPilot));
+  assert.equal(events.at(-1).summary, 'No call to Leeds Radar');
+});
+
+// A clearance nobody acknowledged isn't one: never read back, even after "how do you read?", it was flown in all the same.
+test('a clearance never read back is never flown', async () => {
+  const scenario = scenarioFor(ROUTES[0], 3);
+  const T = scenario.plan.transit;
+  let furthest = 0;
+  const events = await flyWith(scenario, engine => {
+    const perfect = perfectPilot(engine);
+    return ev => {
+      if (ev.kind === 'nav') furthest = Math.max(furthest, ev.s);
+      if (ev.kind === 'awaiting' && /Cleared to enter/.test(ev.atcText || '')) return;   // silent for the clearance
+      perfect(ev);
+    };
+  });
+  assert.ok(events.some(e => e.type === 'no-reply'), 'the clearance went unanswered');
+  assert.ok(furthest < T.sIn, `flew ${furthest.toFixed(2)} nm, controlled airspace starts at ${T.sIn.toFixed(2)}`);
+  assert.equal(events.at(-1).summary, 'No clearance read back: stayed outside');
+});
+
+// Off script, a second change of route was worked out from the first plan, not the one being flown, and went back to
+// places already passed.
+test('off script, a second change of route follows on from the first', async () => {
+  const scenario = scenarioFor('Huddersfield to Selby via Wakefield and Castleford at 2000 ft', 1);
+  const wakefield = scenario.plan.points.find(w => w.place.name === 'Wakefield').s;
+  const place = n => leeds.places.find(p => p.name === n);
+  const claude = { atc: async () => ({ transmissions: ['G-IA, roger, diversion approved, report your intentions'] }) };
+  const routes = [];
+  let asked = false, first = null, second = null;
+  await flyWith(scenario, engine => {
+    const perfect = perfectPilot(engine);
+    return ev => {
+      if (ev.kind === 'route') routes.push(ev.points.map(p => p.name));
+      if (ev.kind === 'nav') {
+        if (!asked && ev.s > wakefield + 0.3) { asked = true; sendWhenClear(engine, 'G-IA, request diversion due weather'); }
+        else if (engine.mode === 'free' && !first) first = engine.changeRoute({ action: 'direct', place: place('Garforth') }) ?? 'ok';
+        else if (first && !second && ev.s >= 1.4) { second = engine.changeRoute({ action: 'direct', place: place('Tadcaster') }) ?? 'ok'; setTimeout(() => engine.stop(), 5); }
+        return;
+      }
+      if (engine.mode !== 'free') perfect(ev);
+    };
+  }, claude);
+  assert.equal(second, 'ok');
+  assert.deepEqual(routes.at(-1).slice(0, 2), ['present position', 'Tadcaster']);
+  assert.ok(!routes.at(-1).includes('Wakefield'), `back past Wakefield: ${routes.at(-1).join(' > ')}`);
+});
+
+// Cleared in again after leaving, a Direct to inside controlled airspace was flown without asking ATC: the record that
+// the aircraft had left stayed set.
+test('cleared in again, a change of route inside still waits for ATC', async () => {
+  const place = n => leeds.places.find(p => p.name === n);
+  const inCas = e => { const p = e.nav.plan.posAt(e.nav.s); return leeds.airspace.some(v => 2800 >= v.base && 2800 < v.top && inside(p, v.poly)); };
+  let phase = 0, left = false, clearances = 0, pending = null;
+  await flyWith(scenarioFor(ROUTES[0], 3), engine => {
+    const perfect = perfectPilot(engine);
+    return ev => {
+      if (ev.kind === 'log' && ev.event.type === 'atc' && /clear of controlled airspace, Basic Service/.test(ev.event.text)) left = true;
+      if (ev.kind === 'log' && ev.event.type === 'atc' && /Cleared to enter/.test(ev.event.text)) clearances++;
+      if (ev.kind === 'nav') {
+        if (phase === 0 && left) { phase = 1; engine.changeRoute({ action: 'direct', place: place('Salts Mill') }); }
+        else if (phase === 1 && clearances >= 2 && inCas(engine)) { phase = 2; engine.changeRoute({ action: 'direct', place: place('Wetherby') }); pending = !!engine.nav.pending; }
+      }
+      perfect(ev);
+    };
+  });
+  assert.equal(phase, 2, 'flew back in on a new clearance');
+  assert.equal(pending, true, 'and the turn waited for ATC’s approval');
+});

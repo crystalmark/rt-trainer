@@ -9,7 +9,7 @@
 // East Fortune: 118.755, elevation 115 ft, runways 29L/11R and 25L/07R, overhead join 2000 ft, circuit 1000 ft
 // (the flexwing school based there); 29 and 25 left-hand, 11 and 07 right-hand (Tim). Air/Ground when someone is
 // on the radio, blind calls when not. Edinburgh Approach 121.205 and the CTR from the AIP (js/areas/edinburgh.js).
-import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, TERMINATED_ACK, details, initialCall, useSquawk, edinburghTraffic } from './common.js';
+import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, TERMINATED_ACK, details, firstCall, initialCall, useSquawk, edinburghTraffic } from './common.js';
 import { AREAS } from '../areas/index.js';
 import { planRoute, whereIs } from '../route.js';
 
@@ -77,9 +77,9 @@ export const forthBridges = {
 
     // ---------- on the ground at East Fortune ----------
     await s.leg('On the ground at East Fortune', 0.3, { cue: 'Make your first call.', early: true });
-    await s.expect({ id: 'radio-check', initial: true, timeout: 180, cue: 'Radio check and departure information.',
+    await firstCall(s, { id: 'radio-check', initial: true, timeout: 180, cue: 'Radio check and departure information.',
       items: [P('radio check', ['radio check'], { soft: true }), P('departure information', ['departure information', 'airfield information', 'departure'], { soft: true })],
-      model: 'East Fortune Radio, {CS}, radio check and departure information' });
+      model: 'East Fortune Radio, {CS}, radio check and departure information' }, 'East Fortune Radio');
     if (staffed) {
       await s.atc(`{CALL}, East Fortune Radio, readability 5, runway ${rwy} ${hand}, QFE ${qfe}, ${wind}`, {
         readback: [runwayItem, QNH(qfe, 'QFE')], model: `Runway ${rwy}, QFE ${qfe}, {CALL}` });
@@ -125,12 +125,14 @@ export const forthBridges = {
     }
     await s.reach(Math.max(s.position().s + 0.3, T.sIn - 2.5), { label: 'Towards Musselburgh' });
     const ident = x ? '{CALL}, identified. ' : '{CALL}, ';
-    await s.atc(`${ident}Cleared to enter the Edinburgh control zone via Musselburgh, VFR, not above altitude 2000 feet, Edinburgh QNH ${qnh}. Report Musselburgh`, {
+    const cleared = await s.atc(`${ident}Cleared to enter the Edinburgh control zone via Musselburgh, VFR, not above altitude 2000 feet, Edinburgh QNH ${qnh}. Report Musselburgh`, {
       clearance: true,
       readback: [P('cleared to enter', ['cleared to enter', 'cleared into', 'cleared'], { fix: 'cleared to enter the Edinburgh control zone via Musselburgh' }),
         P('control zone', ['control zone', 'zone'], { soft: true }), named('Musselburgh', 'via Musselburgh'),
         P('VFR', ['vfr'], { fix: 'VFR' }), ...NOT_ABOVE(2000), QNH(qnh), WILCO()],
       model: `Cleared to enter the Edinburgh control zone via Musselburgh, VFR, not above altitude 2000 feet, QNH ${qnh}, wilco, {CALL}` });
+    // Never read back, even after "how do you read?": it never took effect, and the aircraft used to fly in regardless.
+    if (cleared?.failed) { s.note('The clearance was never read back, so it never took effect: you stayed outside the zone.'); s.endNow('No clearance read back: stayed outside'); }
     s.hold(null);
     s.setRadio({ qnh });
 

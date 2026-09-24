@@ -1,4 +1,4 @@
-import { P, QNH, BASIC, WILCO, TRAFFIC_ACK, details, initialCall, carlisleTraffic, londonInfoTraffic } from './common.js';
+import { P, QNH, BASIC, WILCO, TRAFFIC_ACK, details, firstCall, initialCall, carlisleTraffic, londonInfoTraffic } from './common.js';
 
 // Carlisle is an Air/Ground station: no clearances, no instructions. The pilot announces.
 const AG_WARN = [
@@ -26,8 +26,8 @@ async function arriveCarlisle(s, { from, where, position, pending = 'Call Carlis
   const det = details(ctx, { from, to: 'carlisle', position, altitude: 2500, request: ['land', 'landing', 'join', 'inbound', 'airfield information'] });
   const detSoft = det.map(d => ({ ...d, hard: false, ask: undefined }));
   const initial = [P('PPR', ['ppr', 'prior permission'], { soft: true, why: 'Mention PPR so they can match you to the booking.' }), ...detSoft];
-  await s.expect({ id: 'initial', initial: true, timeout: 240, cue: pending, items: initial,
-    model: `Carlisle Radio, {CS}, {TYPE}, ${where}, altitude 2500 feet, inbound to land, PPR, request airfield information` });
+  await firstCall(s, { id: 'initial', initial: true, timeout: 240, cue: pending, items: initial,
+    model: `Carlisle Radio, {CS}, {TYPE}, ${where}, altitude 2500 feet, inbound to land, PPR, request airfield information` }, 'Carlisle Radio');
   const tag = [];
   let join = 'overhead';
   if (ctx.blind) {
@@ -187,10 +187,10 @@ export const carlisleDeparture = {
   ],
   async run(s) {
     await s.leg('South apron', 0.3, { cue: 'Make your first call.', early: true });
-    await s.expect({ id: 'radio-check', initial: true, timeout: 180, cue: 'Radio check and departure information.',
+    await firstCall(s, { id: 'radio-check', initial: true, timeout: 180, cue: 'Radio check and departure information.',
       items: [P('radio check', ['radio check'], { soft: true }), P('departure information', ['departure information', 'airfield information', 'departure'], { soft: true }),
         P('position', ['apron', 'south'], { soft: true }), P('POB / destination', ['pob', 'person', 'to '], { soft: true })],
-      model: 'Carlisle Radio, {CS}, radio check and request departure information' });
+      model: 'Carlisle Radio, {CS}, radio check and request departure information' }, 'Carlisle Radio');
     await s.atc('{CALL}, Carlisle Radio, readability 5. Runway 24, left-hand, QNH 1016, surface wind 240 degrees 10 knots', {
       readback: [P('runway 24', ['24'], { fix: 'runway 24' }), QNH(1016)], model: 'Runway 24, QNH 1016, {CALL}' });
     await s.expect({ id: 'taxi', cue: 'Taxi for the hold.', items: [P('taxiing', ['taxiing', 'taxi']), P('runway', ['24'], { soft: true })], model: '{CALL}, taxiing for runway 24 via Foxtrot' });

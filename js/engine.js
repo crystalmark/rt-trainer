@@ -393,6 +393,9 @@ export class Engine {
       said: id => e.events.some(ev => (ev.type === 'call' || ev.type === 'readback') && ev.id === id),
       pause: sec => e.sleep(sec * 1000),
       end: summary => { e.summary = summary; },
+      // End the flight here, nothing after it in the script run: for when it can't go on as written (nobody called,
+      // a clearance was never read back), rather than carry on as if it had.
+      endNow: summary => { e.summary = summary; throw new Ended(); },
       settings: e.settings,
     };
   }
@@ -520,7 +523,7 @@ export class Engine {
   changeRoute(change) {
     if (!this.running || !this.nav || !this.scenario.routeChange) return 'This flight has no route to change.';
     let r;
-    try { r = this.scenario.routeChange({ s: this.nav.s, pos: this.nav.plan.posAt(this.nav.s) }, change); } catch (err) { return err.message; }
+    try { r = this.scenario.routeChange({ s: this.nav.s, pos: this.nav.plan.posAt(this.nav.s), plan: this.nav.plan }, change); } catch (err) { return err.message; }
     this.log('route-change', { text: `${change.action === 'divert' ? 'Divert to' : 'Direct to'} ${change.place.name}${r.approval ? ', asked ATC first' : ''}` });
     if (r.approval && this.mode === 'script') { this.nav.pending = r.plan; this.emitRoute(); } else this.fly(r.plan);
     if (this.mode === 'script') this.abortReason = new Reroute(r);

@@ -206,14 +206,28 @@ export function carlisleTraffic(s) {
  * Initial call + "pass your message". If the pilot gives full details on first contact the
  * controller skips straight on, and the debrief notes it.
  */
+/**
+ * Wait for the first call to a station, and ask for it once more if it doesn't come. Nobody answers a call that was
+ * never made: after four quiet minutes the controller used to say "pass your message" to an aircraft that had never
+ * called, and then give it a service. Still nothing, and the flight ends there.
+ */
+export async function firstCall(s, spec, unitName) {
+  const call = await s.expect(spec);
+  if (call) return call;
+  const again = await s.expect({ ...spec, cue: `You haven’t called ${unitName} yet: call when there is a gap.` });
+  if (again) return again;
+  s.note(`You never called ${unitName}, so there was nothing to answer.`);
+  return s.endNow(`No call to ${unitName}`);
+}
+
 export async function initialCall(s, { unitName, requestItems = [], det, model, detailsModel }) {
   // A first call is the station, your callsign and your request: that is all that is scored here. Holding the
   // details back is correct RT, not an omission — the controller asks for them with "pass your message" when
   // they have time, and that call is where they count. A pilot who gives everything at once is marked on it.
   const gaveAll = r => ['position', 'altitude'].every(l => r.items.some(i => i.label === l && i.matched));
-  const init = await s.expect({ id: 'initial', initial: true, timeout: 240, cue: 'Make your initial call.',
-    items: requestItems, extras: det.map(d => ({ ...d, hard: false, ask: undefined })), countExtras: gaveAll, model });
-  const gave = init && gaveAll(init);
+  const init = await firstCall(s, { id: 'initial', initial: true, timeout: 240, cue: 'Make your initial call.',
+    items: requestItems, extras: det.map(d => ({ ...d, hard: false, ask: undefined })), countExtras: gaveAll, model }, unitName);
+  const gave = gaveAll(init);
   if (gave) {
     s.note('Full details on first contact: fine on a quiet frequency. On a busy one, make a short initial call and wait for “pass your message”.');
     return init;

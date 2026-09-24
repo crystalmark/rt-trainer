@@ -222,10 +222,11 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
         readback: [ROS()], model: 'Remain outside controlled airspace, {CALL}' });
       await s.leg('Holding outside controlled airspace', ctx.speedKt * 4 / 60, { cue: 'Orbit outside controlled airspace and listen out.' });
     }
-    await clearance(s, P0);
+    if (!await clearance(s, P0)) return notReadBack(s);
     return through(s, P0, T.reports);
   }
 
+  // Returns false when the clearance was never read back, even after "how do you read?". Then it never took effect.
   async function clearance(s, P0) {
     const { ctx } = s, T = P0.transit, via = T.via && T.via.place;
     const zone = T.intoZone ? area.zone : 'controlled airspace';
@@ -233,7 +234,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     const viaText = via ? ` via ${via.name}` : '';
     const ident = ctx.transponder && !st.identified ? `{CALL}, identified ${whereIs(area, s.position()).text}. ` : '{CALL}, ';
     const routeFix = `route ${routed.map(p => p.name).join(', ')}`;
-    await s.atc(`${ident}Cleared to enter ${zone}${viaText}, VFR, not above altitude ${notAbove} feet, ${area.qnhName} ${qnh}.` +
+    const rb = await s.atc(`${ident}Cleared to enter ${zone}${viaText}, VFR, not above altitude ${notAbove} feet, ${area.qnhName} ${qnh}.` +
       (routed.length > 1 ? ` Route ${routed.map(p => p.name).join(', ')}.` : '') + ` Report ${routed.length ? routed[0].name : 'leaving controlled airspace'}`, {
       clearance: true,
       readback: [
@@ -247,11 +248,21 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
         WILCO(),
       ],
       model: `Cleared to enter ${zone}${viaText}, VFR, not above altitude ${notAbove} feet, QNH ${qnh}${routed.length > 1 ? `, ${routeFix}` : ''}, wilco, {CALL}` });
+    if (rb?.failed) return false;
     st.identified = st.identified || ctx.transponder;
     st.cleared = true;
+    st.left = false;                          // cleared in again: a change of route inside needs approval once more
     s.hold(null);
     s.setRadio({ qnh });
     if (qnh !== q0 && !st.qnhNoted) { st.qnhNoted = true; s.note(`QNH changed from ${q0} to ${qnh} in the clearance: the altimeter should be reset.`); }
+    return true;
+  }
+
+  // A clearance nobody acknowledged isn't one, so the aircraft stays outside: it used to fly in all the same.
+  async function notReadBack(s) {
+    s.note('The clearance was never read back, so it never took effect: you stayed outside controlled airspace.');
+    await s.leg('Holding outside controlled airspace', 3, { cue: 'No clearance read back: stay outside controlled airspace.', early: true });
+    return leaveFrequency(s, 'No clearance read back: stayed outside');
   }
 
   // Cleared: report each of R (the plan's reports, { place, s }) in turn, then leave controlled airspace and the
@@ -352,10 +363,14 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
 
   // ---------- a change of route in flight ----------
 
-  /** Called by the engine when you pick Direct to / Divert on the map. Throws if the new route can't be flown. */
-  function routeChange({ s, pos }, { action, place }) {
-    const pts = reroutePoints(plan, s, action, place);
-    return { plan: planFrom(pos, pts), points: pts, approval: st.cleared && !st.left && insideNow(plan, s) };
+  /**
+   * Called by the engine when you pick Direct to / Divert on the map. Throws if the new route can't be flown. Worked out
+   * from the plan the engine is flying: off script, where this scenario's own record stops, a second change of route was
+   * built on the first plan, and flew back to places already passed.
+   */
+  function routeChange({ s, pos, plan: flying = plan }, { action, place }) {
+    const pts = reroutePoints(flying, s, action, place);
+    return { plan: planFrom(pos, pts), points: pts, approval: st.cleared && !st.left && insideNow(flying, s) };
   }
 
   // You changed the route: pick up from wherever the flight has got to.
@@ -386,7 +401,9 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
 
     plan = change.plan;                                                     // outside controlled airspace you've already turned
     const T = plan.transit;
-    if (T && !st.cleared) s.hold(Math.max(s.position().s, T.sIn - 1), 'Holding for your clearance');
+    // Not in on the new route without a clearance for it: cleared for the old one, the aircraft flew in before the new
+    // clearance came.
+    if (T) s.hold(Math.max(s.position().s, T.sIn - 1), 'Holding for your clearance');
     await s.expect({ id: 'reroute', cue: `Tell ${area.unit} about your change of plan.`, nudge: '{CALL}, say intentions',
       items: [named(target, null, { ask: '{CALL}, say your routing' })],
       model: T ? `{CALL}, change of plan, request zone transit, route direct ${target.name}`
@@ -400,7 +417,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
       }
       if (st.cleared) {                                                     // cleared but not in yet: a new clearance for the new way in
         st.cleared = false;
-        await clearance(s, plan);
+        if (!await clearance(s, plan)) return notReadBack(s);
         return through(s, plan, T.reports);
       }
       await s.atc('{CALL}, roger, remain outside controlled airspace', { readback: [ROS()], model: 'Remain outside controlled airspace, {CALL}' });
