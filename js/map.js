@@ -17,6 +17,9 @@ const make = (name, attrs = {}, parent = null) => {
   return e;
 };
 // Exactly onto the new track once within reach: a turn that ended a hair off it kept the map redrawing for ever.
+// A volume's limits the way a chart gives them: altitudes in feet, flight levels as FL ("2500–6000 ft", "2500–FL85").
+// Every top used to be printed as a flight level, so Edinburgh's zone, 6000 ft on the QNH, read as FL60.
+const limits = v => `${v.lower.replace(/ FT ALT$/, '')}–${v.upper.replace(/ FT ALT$/, '')}${/FT ALT$/.test(v.upper) ? ' ft' : ''}`;
 const turn = (from, to, max) => { const d = ((to - from + 540) % 360) - 180; return Math.abs(d) <= max ? to : (from + Math.sign(d) * max + 360) % 360; };
 
 // A spot well inside a polygon for its label: the grid point furthest from any edge (a cheap pole of inaccessibility).
@@ -83,7 +86,7 @@ export class MovingMap {
       const spot = labelSpot(v.poly), short = v.name.replace(/^.*\b(CTR|CTA \d+)$/, '$1');
       this.mark(marks, spot, 'cas-label', g => {
         make('text', { y: -3 }, g).textContent = short;
-        make('text', { y: 10 }, g).textContent = `${v.base ? v.base : 'SFC'}–FL${Math.round(v.top / 100)}`;
+        make('text', { y: 10 }, g).textContent = limits(v);
       });
     }
     const ap = area.airport;

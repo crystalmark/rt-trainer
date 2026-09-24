@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Engine } from '../js/engine.js';
 import { PROFILES } from '../js/config.js';
-import { AREAS } from '../js/areas/index.js';
+import { AREAS, parseLimit } from '../js/areas/index.js';
 import { parseRoute, planRoute } from '../js/route.js';
 import { inside } from '../js/geo.js';
 import { customScenario } from '../js/scenarios/custom.js';
@@ -341,6 +341,23 @@ test('the Manchester transit corridor needs no clearance below 1500 ft', () => {
   const r = parseRoute('Chorley to Buxton via Sale Water Park at 4000 ft', area);
   const high = planRoute(area, r.points, r.altitude);
   assert.ok(high.errors.some(e => /Class A/.test(e) && /no transit/.test(e)), high.errors.join(' | '));
+});
+
+// Limits are written as the AIP writes them, so none loses its unit: they were bare numbers, and the map could only
+// guess, printing every top as a flight level. Anything the AIP wouldn't write is refused rather than guessed at.
+test('airspace limits are the AIP’s own words, and read as feet', () => {
+  assert.equal(parseLimit('SFC'), 0);
+  assert.equal(parseLimit('2500 FT ALT'), 2500);
+  assert.equal(parseLimit('FL85'), 8500);
+  for (const bad of ['2500', '2500 ft', 'FL 85', '1500 FT AGL', undefined]) assert.throws(() => parseLimit(bad), JSON.stringify(bad));
+  for (const area of AREAS) for (const v of area.airspace) assert.ok(v.base < v.top, `${v.name}: ${v.lower} is not below ${v.upper}`);
+  // As published, AIRAC 2026-09-03 to 2026-10-29: Leeds' tops and the Manchester TMA's are flight levels; Edinburgh's
+  // and the rest of Manchester's are altitudes.
+  const upper = (id, name) => AREAS.find(a => a.id === id).airspace.find(v => v.name === name).upper;
+  assert.equal(upper('leeds', 'Leeds Bradford CTR'), 'FL85');
+  assert.equal(upper('edinburgh', 'Edinburgh CTR'), '6000 FT ALT');
+  assert.equal(upper('manchester', 'Manchester CTR'), '3500 FT ALT');
+  assert.equal(upper('manchester', 'Manchester TMA'), 'FL195');
 });
 
 // The Edinburgh CTR is the first airspace in the app published as a plain circle rather than a vertex list.

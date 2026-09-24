@@ -11,15 +11,15 @@ const ARP = at('535157N 0013938W');   // centre of the CTR and CTA arcs
 const arc = (dir, radius, to) => ({ arc: dir, radius, centre: ARP, to: at(to) });
 
 const AIRSPACE = [
-  { name: 'Leeds Bradford CTR', kind: 'CTR', cls: 'D', base: 0, top: 8500, boundary: [
+  { name: 'Leeds Bradford CTR', kind: 'CTR', cls: 'D', lower: 'SFC', upper: 'FL85', boundary: [
     at('535955N 0014027W'), at('535348N 0013100W'), at('534904N 0012703W'), arc('cw', 8, '534359N 0013847W'),
     at('535312N 0015259W'), arc('cw', 8, '535955N 0014027W')] },
-  { name: 'Leeds Bradford CTA 1', kind: 'CTA', cls: 'D', base: 2500, top: 8500, boundary: [
+  { name: 'Leeds Bradford CTA 1', kind: 'CTA', cls: 'D', lower: '2500 FT ALT', upper: 'FL85', boundary: [
     at('534904N 0012703W'), at('534445N 0012327W'), arc('cw', 12, '534032N 0013331W'),
     at('534359N 0013847W'), arc('ccw', 8, '534904N 0012703W')] },
-  { name: 'Leeds Bradford CTA 2', kind: 'CTA', cls: 'D', base: 2500, top: 8500, boundary: [
+  { name: 'Leeds Bradford CTA 2', kind: 'CTA', cls: 'D', lower: '2500 FT ALT', upper: 'FL85', boundary: [
     at('535312N 0015259W'), at('534359N 0013847W'), arc('cw', 8, '535312N 0015259W')] },
-  { name: 'Leeds Bradford CTA 3', kind: 'CTA', cls: 'D', base: 3000, top: 8500, boundary: [
+  { name: 'Leeds Bradford CTA 3', kind: 'CTA', cls: 'D', lower: '3000 FT ALT', upper: 'FL85', boundary: [
     at('540236N 0014900W'), at('535955N 0014027W'), arc('ccw', 8, '534359N 0013847W'),
     at('534032N 0013331W'), arc('ccw', 12, '534445N 0012327W'),
     at('534007N 0011937W'), at('533713N 0014830W'), at('534726N 0015913W'), at('535539N 0020919W')] },

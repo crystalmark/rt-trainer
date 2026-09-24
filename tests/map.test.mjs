@@ -98,3 +98,19 @@ test('a turn is drawn on every frame, and the map settles on the new track', asy
   assert.ok(settled.ticks <= 20, `${settled.ticks} frames a second after the turn`);
   map.destroy();
 });
+
+// Every top was printed as a flight level, so Edinburgh's zone, 6000 ft on the QNH (AD 2.17), read "FL60".
+test('airspace labels give altitudes in feet and flight levels as FL, as the AIP does', () => {
+  resized(341, 300);
+  const map = newMap();
+  const labels = id => {
+    map.setArea(areaById(id));
+    return Object.fromEntries(map.marks.filter(m => m.g.attrs.class === 'cas-label').map(m => [m.g.children[0].textContent, m.g.children[1].textContent]));
+  };
+  assert.deepEqual(labels('edinburgh'), { CTR: 'SFC–6000 ft', 'CTA 1': '2500–6000 ft', 'CTA 2': '2500–6000 ft', 'CTA 3': '3500–6000 ft', 'CTA 4': '3500–6000 ft' });
+  assert.deepEqual(labels('leeds'), { CTR: 'SFC–FL85', 'CTA 1': '2500–FL85', 'CTA 2': '2500–FL85', 'CTA 3': '3000–FL85' });
+  const manchester = labels('manchester');
+  assert.equal(manchester.CTR, 'SFC–3500 ft');
+  assert.equal(manchester['Manchester TMA'], '3500–FL195');
+  map.destroy();
+});

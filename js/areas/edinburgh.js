@@ -15,17 +15,17 @@ const arc = to => ({ arc: 'ccw', radius: 10, centre: ARP, to: at(to) });
 // "following the line of latitude to" (CTA 2, 3 and 4) is a constant-latitude segment: on a flat nm grid that
 // is the straight line between the two points anyway, so it needs nothing special here.
 const AIRSPACE = [
-  { name: 'Edinburgh CTR', kind: 'CTR', cls: 'D', base: 0, top: 6000, boundary: circle(ARP, 10) },
-  { name: 'Edinburgh CTA 1', kind: 'CTA', cls: 'D', base: 2500, top: 6000, boundary: [
+  { name: 'Edinburgh CTR', kind: 'CTR', cls: 'D', lower: 'SFC', upper: '6000 FT ALT', boundary: circle(ARP, 10) },
+  { name: 'Edinburgh CTA 1', kind: 'CTA', cls: 'D', lower: '2500 FT ALT', upper: '6000 FT ALT', boundary: [
     at('555916N 0033941W'), arc('554851N 0033235W'),
     at('554349N 0034715W'), at('554806N 0035411W'), at('555417N 0035413W')] },
-  { name: 'Edinburgh CTA 2', kind: 'CTA', cls: 'D', base: 2500, top: 6000, boundary: [
+  { name: 'Edinburgh CTA 2', kind: 'CTA', cls: 'D', lower: '2500 FT ALT', upper: '6000 FT ALT', boundary: [
     at('560700N 0032221W'), at('560700N 0025608W'), at('560008N 0024849W'),
     at('555442N 0030503W'), arc('560700N 0032221W')] },
-  { name: 'Edinburgh CTA 3', kind: 'CTA', cls: 'D', base: 3500, top: 6000, boundary: [
+  { name: 'Edinburgh CTA 3', kind: 'CTA', cls: 'D', lower: '3500 FT ALT', upper: '6000 FT ALT', boundary: [
     at('560700N 0034855W'), at('560700N 0032221W'), arc('555916N 0033941W'),
     at('555417N 0035413W'), at('555724N 0035417W')] },
-  { name: 'Edinburgh CTA 4', kind: 'CTA', cls: 'D', base: 3500, top: 6000, boundary: [
+  { name: 'Edinburgh CTA 4', kind: 'CTA', cls: 'D', lower: '3500 FT ALT', upper: '6000 FT ALT', boundary: [
     at('560008N 0024849W'), at('554125N 0025510W'), at('554125N 0034324W'),
     at('554349N 0034715W'), at('554851N 0033235W'), arc('555442N 0030503W')] },
 ];

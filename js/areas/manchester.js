@@ -17,31 +17,31 @@ import { manchesterTraffic } from '../scenarios/common.js';
 const ARP = at('532113N 0021630W');   // mid point of runway 05L/23R
 
 const AIRSPACE = [
-  { name: 'Manchester CTR', kind: 'CTR', cls: 'D', base: 0, top: 3500, boundary: [
+  { name: 'Manchester CTR', kind: 'CTR', cls: 'D', lower: 'SFC', upper: '3500 FT ALT', boundary: [
     at('533430N 0020400W'), at('532730N 0015400W'), at('531616N 0020131W'), at('531055N 0022207W'),
     at('531050N 0022814W'), at('531255N 0023000W'), at('532141N 0023000W'), at('532638N 0022258W')] },
-  { name: 'Manchester CTA 1', kind: 'CTA', cls: 'D', base: 2500, top: 3500, boundary: [
+  { name: 'Manchester CTA 1', kind: 'CTA', cls: 'D', lower: '2500 FT ALT', upper: '3500 FT ALT', boundary: [
     at('533430N 0020400W'), at('532734N 0030310W'), at('533200N 0025000W')] },
-  { name: 'Manchester CTA 2', kind: 'CTA', cls: 'D', base: 2500, top: 3500, boundary: [
+  { name: 'Manchester CTA 2', kind: 'CTA', cls: 'D', lower: '2500 FT ALT', upper: '3500 FT ALT', boundary: [
     at('531047N 0020459W'), at('530602N 0022246W'), at('530626N 0024349W'), at('531427N 0030140W'),
     at('531050N 0023224W'), at('531055N 0022207W'), at('531616N 0020131W')] },
-  { name: 'Manchester CTA 3', kind: 'CTA', cls: 'D', base: 3000, top: 3500, boundary: [
+  { name: 'Manchester CTA 3', kind: 'CTA', cls: 'D', lower: '3000 FT ALT', upper: '3500 FT ALT', boundary: [
     at('533650N 0015216W'), at('532719N 0014617W'), at('532656N 0015000W'), at('530732N 0020056W'),
     at('531047N 0020459W'), at('532730N 0015400W'), at('533430N 0020400W')] },
-  { name: 'Manchester CTA 4', kind: 'CTA', cls: 'D', base: 2500, top: 3500, boundary: [
+  { name: 'Manchester CTA 4', kind: 'CTA', cls: 'D', lower: '2500 FT ALT', upper: '3500 FT ALT', boundary: [
     at('533011N 0024123W'), at('532708N 0023744W'), at('531130N 0023744W'),
     at('531309N 0025059W'), at('532902N 0025059W')] },
-  { name: 'Manchester CTA 5', kind: 'CTA', cls: 'D', base: 2000, top: 3500, boundary: [
+  { name: 'Manchester CTA 5', kind: 'CTA', cls: 'D', lower: '2000 FT ALT', upper: '3500 FT ALT', boundary: [
     at('533124N 0023102W'), at('532056N 0023103W'), at('532638N 0022258W'), at('533430N 0020400W')] },
   // CTA 6 is the lid of the transit corridor: same boundary, starting where EGR323 stops at 1500 ft. The AIP
   // runs one segment "following the line of latitude", which on a flat nm grid is the straight line anyway.
-  { name: 'Manchester CTA 6', kind: 'CTA', cls: 'D', base: 1500, top: 3500, boundary: [
+  { name: 'Manchester CTA 6', kind: 'CTA', cls: 'D', lower: '1500 FT ALT', upper: '3500 FT ALT', boundary: [
     at('533124N 0023102W'), at('532056N 0023103W'), at('532141N 0023000W'), at('531255N 0023000W'),
     at('531050N 0022814W'), at('531050N 0023224W'), at('531130N 0023744W'), at('532708N 0023744W'),
     at('533011N 0024123W')] },
   // Class A above it all. No VFR in it at any height, which the route planner refuses rather than offering a
   // transit nobody could be given.
-  { name: 'Manchester TMA', kind: 'TMA', cls: 'A', base: 3500, top: 19500, boundary: [
+  { name: 'Manchester TMA', kind: 'TMA', cls: 'A', lower: '3500 FT ALT', upper: 'FL195', boundary: [
     at('535110N 0020348W'), at('534726N 0015913W'), at('533713N 0014830W'), at('533650N 0015216W'),
     at('532719N 0014617W'), at('532656N 0015000W'), at('530732N 0020056W'), at('530602N 0022246W'),
     at('530626N 0024349W'), at('531427N 0030140W'), at('532309N 0031205W'), at('532734N 0030310W'),
