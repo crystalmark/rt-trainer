@@ -7,7 +7,7 @@
 #   deploy/cloudfront.sh --remove   take the /rt* behaviour out again (the function, the policy and the S3 files stay)
 set -euo pipefail
 cd "$(dirname "$0")"
-DIST=${DIST:-EZS3KVTVPEGYG}
+DIST=${RT_DIST:-EZS3KVTVPEGYG}   # RT_DIST only: a DIST left in the shell by another project would have been changed
 FN=rt-trainer-index
 POLICY=$(jq -r .Name rt-headers.json)
 PATTERN='/rt*'

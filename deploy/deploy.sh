@@ -6,9 +6,10 @@
 #   deploy/deploy.sh --dryrun   list what would change and stop
 set -euo pipefail
 cd "$(dirname "$0")/.."
-BUCKET=${BUCKET:-crystalmark.co.uk}
+# Overridden only by RT_ names: a BUCKET or DIST left in the shell by another project would have been deployed to.
+BUCKET=${RT_BUCKET:-crystalmark.co.uk}
 PREFIX=rt   # the sync below deletes, so it must never run at the bucket root: the main site lives there
-DIST=${DIST:-EZS3KVTVPEGYG}
+DIST=${RT_DIST:-EZS3KVTVPEGYG}
 SITE=https://crystalmark.co.uk/$PREFIX/
 DRY=; [ "${1:-}" = --dryrun ] && DRY=--dryrun
 
