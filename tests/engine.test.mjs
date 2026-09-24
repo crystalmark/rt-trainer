@@ -384,7 +384,7 @@ test('an empty transmission in the middle of an exchange does not cost the next 
 
 // Calling in the middle of someone else's exchange draws "standby", and "pass your message" once it is over: but only
 // then, and only while it is still wanted.
-function steppedInto({ hold = 0, afterStandby = null } = {}) {
+function steppedInto({ hold = 0, afterStandby = null, afterPass = null, before = null } = {}) {
   const clock = fakeClock(100), radio = fakeRadio(clock);
   let engine, n = 0;
   const say = radio.say.bind(radio);
@@ -395,12 +395,13 @@ function steppedInto({ hold = 0, afterStandby = null } = {}) {
       clock.sleep(hold).then(() => engine.pilotTransmission('Leeds Radar, golf charlie zulu india alpha, request basic service'));
     }
     if (/standby/.test(display) && afterStandby) afterStandby(engine);
+    if (/pass your message/.test(display) && afterPass) afterPass(engine);
     return res;
   };
   const scenario = {
     id: 'standby', title: 'Standby', unit: 'Leeds Radar', freq: '134.580', briefing: () => [['Aircraft', 'G-CZIA']],
     traffic: () => (n++ ? null : [['atc', 'Channex 47, turn left heading 140'], ['Channex 47', 'Left heading 140, Channex 47']]),
-    async run(s) { await s.pause(120); s.end('Done'); },
+    async run(s) { if (before) await s.atc(before); await s.pause(120); s.end('Done'); },
   };
   engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(1), settings: { trafficDensity: 'busy' } });
   return engine.start();
@@ -420,6 +421,16 @@ test('"pass your message" is not asked of a pilot who has called again since "st
   const events = await steppedInto({ afterStandby: engine => sendWhenClear(engine, 'Leeds Radar, golf charlie zulu india alpha, request basic service') });
   assert.equal(events.filter(e => e.type === 'pilot').length, 2, 'they called again');
   assert.equal(heardAt(events, /pass your message/), undefined, onFrequency(events));
+});
+
+// "Pass your message" was never recorded as the last thing said to the pilot, so "say again" after it repeated whatever
+// the script had said before: here, a request for their altitude from minutes earlier.
+test('"say again" after "pass your message" hears "pass your message" again', async () => {
+  const events = await steppedInto({ before: '{CS}, Leeds Radar, report your altitude', afterPass: engine => sendWhenClear(engine, 'say again') });
+  const i = events.findIndex(e => e.type === 'pilot' && e.text === 'say again');
+  assert.ok(i > 0, onFrequency(events));
+  const repeat = events.slice(i).find(e => e.type === 'atc');
+  assert.equal(repeat?.text, 'G-CZIA, I say again, pass your message', onFrequency(events));
 });
 
 // The controller holds the rest of the exchange for a pilot who is transmitting, but only for 15 s. A call still going

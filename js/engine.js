@@ -770,7 +770,10 @@ export class Engine {
         await this.holdForPilot();                                          // keyed meanwhile: what they say decides it
         const owed = this.standbyPending;
         this.standbyPending = null;
-        if (owed && owed === this.ctx.unit) await this.transmit('atc', '{CALL}, pass your message', { toPilot: true });
+        if (!owed || owed !== this.ctx.unit) return;
+        // The last thing said to the pilot, so "say again" gets this, not whatever the script said before it.
+        const said = await this.transmit('atc', '{CALL}, pass your message', { toPilot: true });
+        this.lastToPilot = said.display; this.lastToPilotAt = this.now();
       });
     } catch (e) { if (!(e instanceof Ended)) throw e; }
   }
