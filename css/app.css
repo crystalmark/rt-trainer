@@ -170,15 +170,19 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--lcd); }
 .log .line.you { color: var(--ink); }
 .log .line.you b { color: var(--rx); }
 .log .line.hidden-text { font-style: italic; }
-.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(96px + env(safe-area-inset-bottom, 0)); z-index: 30;
-  max-width: min(92vw, 520px); text-align: center; background: #3A2A0B; color: #FFE1A6; border: 1px solid #5B441A;
+/* Nothing in it to press, so presses go through it: it used to sit on the PTT button and swallow them. */
+.toast { position: fixed; left: 0; right: 0; margin: 0 auto; width: fit-content; bottom: calc(96px + env(safe-area-inset-bottom, 0)); z-index: 30;
+  pointer-events: none; max-width: min(92vw, 520px); text-align: center; background: #3A2A0B; color: #FFE1A6; border: 1px solid #5B441A;
   border-radius: 6px; padding: 8px 12px; font-size: 14px; box-shadow: 0 6px 24px rgba(0, 0, 0, .45); }
 .toast.info { background: #13303A; color: #BDEAF4; }
+/* In flight, clear of the PTT button, whose WAIT… / SPEAK is exactly what a "try again" toast covered. */
+body:has(#flight:not([hidden])) .toast { bottom: auto; top: calc(8px + env(safe-area-inset-top, 0)); }
 .mine { color: var(--muted); font-size: 13px; min-height: 1.4em; }
 .ptt { height: min(34vh, 260px); border-radius: 18px; border: 2px solid #3A4652; background: radial-gradient(circle at 50% 35%, #26303A, #182027); display: grid; place-items: center; align-content: center; gap: 14px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: pointer; }
 .ptt-label { font: 700 22px var(--display); letter-spacing: .16em; color: var(--ink); }
 .ptt.keyed { background: radial-gradient(circle at 50% 35%, #7A241D, #3E110D); border-color: var(--tx); }
 .ptt.keyed .ptt-label::after { content: " · TX"; color: #FFB3AA; }
+.ptt[disabled] { opacity: .45; cursor: default; }
 .ptt-meter { width: 60%; height: 6px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; }
 .ptt-meter span { display: block; height: 100%; width: 0; background: var(--ok); }
 .flightbar { display: flex; gap: 8px; justify-content: space-between; }

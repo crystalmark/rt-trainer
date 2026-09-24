@@ -104,7 +104,6 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
 - Change altitude in flight, and have ATC react if you climb into a CTA without a clearance.
 - Import a SkyDemon route (need a sample export to see the format); unknown place names via the geocoder.
 - Routes over the airport: have ATC route you round it rather than just warning in the briefing.
-- If the microphone is refused, still fly the scenario listen-only instead of failing to start.
 - A farm-strip scenario on SafetyCom 135.480 (within 10 nm and below 2000 ft above the strip): blind calls, with
   St Michael's and Crossland Moor on the same frequency to be listened for and not talked over.
 - Better radio audio: synthesise through an API and band-limit it in Web Audio for a proper VHF sound (the browser's

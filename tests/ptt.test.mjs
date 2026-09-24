@@ -10,6 +10,8 @@ let nextStartThrows = false;
 const WORDS = 'golf charlie zulu india alpha';
 const ANDROID_WORDS = 'golf charlie zulu india alpha microlight oxenhope ilkley skipton 1700 feet qnh 1018';
 let android = false;
+let gumDelay = 0;                                // how long getUserMedia takes to answer
+let stopLatency = 5;                             // how long a stopped recogniser takes to finish
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 class FakeRecognition {
@@ -33,11 +35,14 @@ class FakeRecognition {
       this.onresult?.({ results: [...results, Object.assign([{ transcript: ANDROID_WORDS }], { isFinal: false })] });
     }, 5);
   }
-  stop() { setTimeout(() => this.onend?.(), 5); }
+  stop() { setTimeout(() => this.onend?.(), stopLatency); }
   abort() { this.aborted = true; setTimeout(() => this.onend?.(), 1); }
 }
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {
-  userAgent: 'node', mediaDevices: { getUserMedia: async () => { const t = { stop() { live.delete(t); } }; live.add(t); return { getTracks: () => [t] }; } },
+  userAgent: 'node', mediaDevices: { getUserMedia: async () => {
+    if (gumDelay) await sleep(gumDelay);
+    const t = { stop() { live.delete(t); } }; live.add(t); return { getTracks: () => [t] };
+  } },
 } });
 globalThis.window = {
   SpeechRecognition: FakeRecognition,
@@ -54,6 +59,11 @@ function make(opts) {
   return { ptt, got, notices };
 }
 async function press(ptt, ms = 250) { ptt.down(); await sleep(ms); await ptt.up(); }
+// The one #ptt button every flight shares, keeping count of what is listening to it.
+function sharedButton() {
+  const on = new Set();
+  return { on, addEventListener(type, f, opts) { on.add(f); opts?.signal?.addEventListener('abort', () => on.delete(f)); } };
+}
 
 test('on Android the recogniser gets the microphone, and each press gets a fresh one', async () => {
   const { ptt, got } = make({ exclusive: true });
@@ -98,6 +108,70 @@ test('ending a flight stops its recogniser and lets go of the microphone', async
   assert.equal(rec.aborted, true, 'a recogniser outliving its flight would hold the service');
   assert.equal(ptt.stream, null);
   assert.equal(live.size, 0);
+});
+
+// A flight often ends on your own last call: letting go asks for the meter's microphone back, and the flight is over
+// before it arrives. It used to be kept, holding the microphone (so deafening Android's recogniser) for good.
+test('a microphone that arrives after the flight has ended is let go at once', async () => {
+  const button = sharedButton();
+  const { ptt } = make({ exclusive: true, button });
+  await ptt.init();
+  assert.ok(button.on.size > 0, 'listening to the button');
+  gumDelay = 50;
+  await press(ptt);                              // letting go asks for the microphone back…
+  ptt.destroy();                                 // …and the flight ends before it comes
+  await sleep(80);
+  gumDelay = 0;
+  assert.equal(live.size, 0, 'nothing is left holding the microphone');
+  assert.equal(button.on.size, 0, 'nor listening to the button, which the next flight uses too');
+});
+
+test('on Android, a microphone that arrives during the next press is let go, so the recogniser can hear', async () => {
+  const { ptt, got } = make({ exclusive: true });
+  await ptt.init();
+  gumDelay = 60;
+  await press(ptt);                              // letting go asks for the meter's microphone back, slowly…
+  ptt.down();                                    // …and the next press comes first
+  await sleep(250);
+  await ptt.up();
+  await sleep(80);
+  gumDelay = 0;
+  assert.deepEqual(got.map(g => g.text), [WORDS, WORDS], 'the second transmission is heard too');
+  assert.ok(ptt.stream, 'and the meter has its microphone back afterwards');
+  ptt.destroy();
+  assert.equal(live.size, 0);
+});
+
+test('asking for the microphone twice at once opens it once', async () => {
+  const { ptt } = make({ exclusive: true });
+  await ptt.init();
+  ptt.closeMic();
+  gumDelay = 30;
+  await Promise.all([ptt.openMic(), ptt.openMic()]);
+  gumDelay = 0;
+  assert.equal(live.size, 1);
+  ptt.destroy();
+  assert.equal(live.size, 0);
+});
+
+// The words go on arriving for a moment after you let go. A second press in that moment used to wipe them: the first
+// call was lost and the second delivered twice, once while the button was still held down.
+test('pressing again straight after letting go: the first call is delivered, once, before the second begins', async () => {
+  const order = [];
+  const { ptt } = make({ exclusive: true,
+    onDown: () => order.push('down'), onRelease: () => order.push('release'), onUp: text => order.push(`up: ${text}`) });
+  await ptt.init();
+  stopLatency = 300;                             // the first recogniser is still finishing when the thumb comes back
+  ptt.down(); await sleep(250);
+  const first = ptt.up();
+  await sleep(50);
+  ptt.down(); await sleep(250);
+  await ptt.up();
+  await first;
+  stopLatency = 5;
+  await sleep(20);
+  assert.deepEqual(order, ['down', 'release', `up: ${WORDS}`, 'down', 'release', `up: ${WORDS}`]);
+  ptt.destroy();
 });
 
 // The Pixel transcript: "light light light Oxenhope light Oxenhope … light Oxenhope Ilkley Skipton Oxenhope 1,700

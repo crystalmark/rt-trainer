@@ -8,6 +8,10 @@
 // Android the meter's stream is let go while the button is held and taken back afterwards; anywhere else it is let
 // go the first time a transmission shows the recogniser heard nothing at all. Each press also gets a fresh
 // recogniser: one left believing it is still running makes start() throw, and that used to be swallowed.
+//
+// Each press keeps its own record of what its recogniser heard. The words go on arriving for a second after you let
+// go, and a press straight after the last one used to wipe them and take its place: the first call was lost and the
+// second delivered twice.
 
 const ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
 const EVENTS = ['audiostart', 'soundstart', 'speechstart', 'speechend', 'soundend', 'audioend', 'nomatch'];
@@ -32,13 +36,10 @@ export function spoken(fin, interim) {
 }
 
 export class PushToTalk {
-  constructor({ button, onDown, onUp, onInterim, onHotMic, onLevel, isRadioBusy, onNotice, onListening, exclusive = ANDROID }) {
-    Object.assign(this, { button, onDown, onUp, onInterim, onHotMic, onLevel, isRadioBusy, onNotice, onListening, exclusive });
+  constructor({ button, onDown, onRelease, onUp, onInterim, onHotMic, onLevel, isRadioBusy, onNotice, onListening, exclusive = ANDROID }) {
+    Object.assign(this, { button, onDown, onRelease, onUp, onInterim, onHotMic, onLevel, isRadioBusy, onNotice, onListening, exclusive });
     this.keyed = false;
-    this.finalText = '';
-    this.interimText = '';
-    this.segments = [];
-    this.trace = [];
+    this.press = null;             // this transmission, or the last one while its words are still arriving
     this.enabled = false;
   }
 
@@ -54,17 +55,28 @@ export class PushToTalk {
     this.buf = new Float32Array(this.analyser.fftSize);
     this.floor = 0.01; this.loudSince = 0; this.lastHot = 0;
     await this.openMic();
+    if (this.destroyed) return;                     // the flight was abandoned while the permission prompt was up
     this.meterTimer = setInterval(() => this.meter(), 100);
     this.bindInputs();
     this.enabled = true;
   }
 
-  /** The meter's own microphone stream: held between transmissions, let go during one when exclusive. */
-  async openMic() {
-    if (this.stream) return;
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-    this.src = this.ac.createMediaStreamSource(this.stream);
-    this.src.connect(this.analyser);
+  /**
+   * The meter's own microphone stream: held between transmissions, let go during one when exclusive. One request at
+   * a time, and a stream that arrives when it is no longer wanted is let go at once: the flight ended while
+   * getUserMedia was answering (a flight often ends on your own last call), or on Android the next press has begun
+   * and the recogniser needs the microphone. Kept, it held the microphone for the rest of the session.
+   */
+  openMic() {
+    if (this.stream) return Promise.resolve();
+    return this.opening ||= navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      .then(stream => {
+        this.opening = null;
+        if (this.destroyed || this.stream || (this.exclusive && this.keyed)) { stream.getTracks().forEach(t => t.stop()); return; }
+        this.stream = stream;
+        this.src = this.ac.createMediaStreamSource(stream);
+        this.src.connect(this.analyser);
+      }, err => { this.opening = null; throw err; });
   }
 
   closeMic() {
@@ -72,25 +84,26 @@ export class PushToTalk {
     this.stream?.getTracks().forEach(t => t.stop()); this.stream = null;
   }
 
-  /** A fresh recogniser for one transmission, reporting what it heard to this.trace. */
-  recognizer() {
+  /** A fresh recogniser for one press, writing what it hears to that press's own record. */
+  recognizer(p) {
     const rec = new this.SR();
     rec.lang = 'en-GB';
     rec.continuous = true;
     rec.interimResults = true;
     rec.maxAlternatives = 5;
-    const mine = f => (...a) => { if (this.rec === rec) f(...a); };   // ignore a previous press's stragglers
+    const current = () => this.press === p;   // a previous press's stragglers reach its own record and no further
     for (const ev of EVENTS) {
-      rec.addEventListener(ev, mine(() => {
-        this.trace.push(ev);
+      rec.addEventListener(ev, () => {
+        p.trace.push(ev);
+        if (!current()) return;
         // The recogniser is only listening from here. On Android that is well after the press, and anything said
         // before it is lost: the callsign, usually. So this is when to tell the pilot to speak.
         if (ev === 'audiostart' && this.keyed) this.onListening?.();
         if (ev === 'soundstart' || ev === 'speechstart') this.hearing = true;
         if (ev === 'soundend' || ev === 'speechend') this.hearing = false;
-      }));
+      });
     }
-    rec.onresult = mine(e => {
+    rec.onresult = e => {
       const finals = [];                         // each finished piece, with the alternatives Chrome offers for it
       let interim = '';
       for (let i = 0; i < e.results.length; i++) {
@@ -102,49 +115,51 @@ export class PushToTalk {
         if (finals.length && continues(sofar, best)) finals.splice(0, finals.length, { text: best, alts });   // Android
         else finals.push({ text: best, alts });
       }
-      this.finalText = finals.map(f => f.text).join(' ');
-      this.interimText = interim;
-      this.segments = finals.map(f => f.alts);
-      if (!this.trace.includes('result')) this.trace.push('result');
-      this.onInterim?.(spoken(this.finalText, interim));
-    });
-    rec.onerror = mine(e => { this.lastError = e.error; this.trace.push(`error:${e.error}`); });
-    rec.onend = mine(() => { this.trace.push('end'); this.hearing = false; this.endResolve?.(); });
+      p.final = finals.map(f => f.text).join(' ');
+      p.interim = interim;
+      p.segments = finals.map(f => f.alts);
+      if (!p.trace.includes('result')) p.trace.push('result');
+      if (current() && !p.delivered) this.onInterim?.(spoken(p.final, interim));
+    };
+    rec.onerror = e => { p.error = e.error; p.trace.push(`error:${e.error}`); };
+    rec.onend = () => { p.trace.push('end'); if (current()) this.hearing = false; p.ended(); };
     return rec;
   }
 
+  // The button is the same one for every flight, and each flight has its own PushToTalk: destroy() takes these off.
   bindInputs() {
-    const b = this.button;
+    const b = this.button, on = { signal: (this.inputs = new AbortController()).signal };
     const down = (e) => { e.preventDefault(); b.setPointerCapture?.(e.pointerId); this.down(); };
     const up = (e) => { e.preventDefault(); this.up(); };
-    b.addEventListener('pointerdown', down);
-    b.addEventListener('pointerup', up);
-    b.addEventListener('pointercancel', up);
-    b.addEventListener('contextmenu', e => e.preventDefault());
-    this.keydown = (e) => {
+    b.addEventListener('pointerdown', down, on);
+    b.addEventListener('pointerup', up, on);
+    b.addEventListener('pointercancel', up, on);
+    b.addEventListener('contextmenu', e => e.preventDefault(), on);
+    window.addEventListener('keydown', (e) => {
       if (e.code !== 'Space' || e.repeat || /input|textarea|select/i.test(document.activeElement?.tagName)) return;
       e.preventDefault(); this.down();
-    };
-    this.keyup = (e) => { if (e.code === 'Space' && this.keyed) { e.preventDefault(); this.up(); } };
-    window.addEventListener('keydown', this.keydown);
-    window.addEventListener('keyup', this.keyup);
+    }, on);
+    window.addEventListener('keyup', (e) => { if (e.code === 'Space' && this.keyed) { e.preventDefault(); this.up(); } }, on);
   }
 
   down() {
     if (!this.enabled || this.keyed) return;
+    // Pressed again before the last transmission's words were all in: hand that one over now, with what it has,
+    // rather than lose it, and before this press is announced so the two can't cross.
+    if (this.press && !this.press.delivered) this.deliver(this.press, { reopen: false });
     this.keyed = true;
-    this.keyAt = performance.now();
-    this.finalText = ''; this.interimText = ''; this.segments = [];
-    this.trace = []; this.lastError = null; this.hearing = false;
+    const p = this.press = { keyAt: performance.now(), final: '', interim: '', segments: [], trace: [], error: null, delivered: false };
+    p.done = new Promise(r => { p.ended = r; });
+    this.hearing = false;
     this.onDown?.();
-    const hadMic = !!this.stream;
+    const hadMic = !!(this.stream || this.opening);
     if (this.exclusive) this.closeMic();
     try { this.rec?.abort(); } catch { /* already finished */ }
-    const rec = this.rec = this.recognizer();
+    const rec = this.rec = p.rec = this.recognizer(p);
     const start = () => {
       if (this.rec !== rec || !this.keyed) return;
-      try { rec.start(); this.trace.push('start'); }
-      catch (err) { this.lastError = `could not start: ${err.name || err.message || err}`; this.trace.push('start-threw'); }
+      try { rec.start(); p.trace.push('start'); }
+      catch (err) { p.error = `could not start: ${err.name || err.message || err}`; p.trace.push('start-threw'); }
     };
     // Give Android a moment to release the microphone before the recogniser asks for it. You pause a beat
     // after pressing anyway ("press, pause, speak"), so nothing you say is lost to it.
@@ -154,32 +169,40 @@ export class PushToTalk {
   async up() {
     if (!this.keyed) return;
     this.keyed = false;
-    const held = performance.now() - this.keyAt;
-    const ended = new Promise(r => { this.endResolve = r; });
-    try { this.rec?.stop(); } catch { /* not running */ }
-    if (this.trace.includes('start') && !this.trace.includes('end')) await Promise.race([ended, new Promise(r => setTimeout(r, 1500))]);
+    const p = this.press;
+    p.heldMs = Math.round(performance.now() - p.keyAt);
+    this.onRelease?.();
+    try { p.rec.stop(); } catch { /* not running */ }
+    if (p.trace.includes('start') && !p.trace.includes('end')) await Promise.race([p.done, new Promise(r => setTimeout(r, 1500))]);
+    this.deliver(p);
+  }
+
+  /** Hand a transmission over, once: when its recogniser has finished, or sooner if the next press can't wait. */
+  deliver(p, { reopen = true } = {}) {
+    if (p.delivered || this.destroyed) return;
+    p.delivered = true;
     // Keep the provisional tail too: on Android your last words are often still provisional when you let go, and
     // keeping only the finished part cut transmissions off mid-word ("QNH 10").
-    const text = spoken(this.finalText, this.interimText);
-    const heard = this.trace.some(t => SOUND.includes(t)), listening = this.trace.includes('audiostart');
-    const error = text ? null : this.lastError
+    const text = spoken(p.final, p.interim);
+    const heard = p.trace.some(t => SOUND.includes(t)), listening = p.trace.includes('audiostart');
+    const error = text ? null : p.error
       || (heard ? 'heard sound but no words' : listening ? 'listening, but heard no speech' : 'no sound reached the speech recogniser');
     if (!text && !heard && !this.exclusive) {
       // The meter can hear you and the recogniser can't: they are fighting over the microphone. Let it have it.
       this.exclusive = true;
       this.onNotice?.('Speech recognition heard nothing, so the app now lets go of the microphone while you transmit. Try again.');
     }
-    if (this.exclusive && this.enabled) this.openMic().catch(() => { /* the hot-mic check stops; transmitting still works */ });
-    this.onUp?.(text, { heldMs: Math.round(held), error, trace: this.trace.join(' '), alternatives: this.candidates(text) });
+    if (reopen && this.exclusive && this.enabled) this.openMic().catch(() => { /* the hot-mic check stops; transmitting still works */ });
+    this.onUp?.(text, { heldMs: p.heldMs, error, trace: p.trace.join(' '), alternatives: this.candidates(text, p.segments) });
   }
 
   /**
    * Everything the recogniser thought it heard, best first. Chrome often puts the right words second or third
    * ("escort" for "squawk"), so the engine matches all of them against what the controller is expecting.
    */
-  candidates(primary, limit = 8) {
+  candidates(primary, segments, limit = 8) {
     let out = [''];
-    for (const alts of this.segments || []) {
+    for (const alts of segments || []) {
       const next = [];
       for (const sofar of out) for (const alt of alts) if (next.length < limit) next.push(sofar ? `${sofar} ${alt}` : alt);
       out = next.length ? next : out;
@@ -205,13 +228,13 @@ export class PushToTalk {
   }
 
   destroy() {
+    this.destroyed = true;                                 // a microphone still on its way is let go when it arrives
+    this.enabled = false;
     clearInterval(this.meterTimer);
-    window.removeEventListener('keydown', this.keydown);
-    window.removeEventListener('keyup', this.keyup);
+    this.inputs?.abort();
     try { this.rec?.abort(); } catch { /* finished */ }   // a recogniser outliving its flight holds the service
     this.rec = null;
     this.closeMic();
     this.ac?.close();
-    this.enabled = false;
   }
 }

@@ -277,6 +277,7 @@ function briefRows(lines) {
 async function begin() {
   const s = scenario(), p = profile();
   $('begin').disabled = true;
+  let flying = false;
   try {
     state.radio = new BrowserRadio({ noise: $('o-noise').value });
     await state.radio.init();
@@ -287,7 +288,9 @@ async function begin() {
       trafficDensity: $('o-density').value, timeScale: Number($('o-scale').value),
       atcDelay: DELAYS[$('o-delay').value] || DELAYS.normal, refusalBias: Number($('o-refuse').value),
     };
-    const engine = new Engine({ scenario: s, profile: p, settings, radio: state.radio, clock: realClock, claude, onEvent: onEngineEvent });
+    // Only the current flight's events: one abandoned mid-request could otherwise end the next flight when it settles.
+    const engine = new Engine({ scenario: s, profile: p, settings, radio: state.radio, clock: realClock, claude,
+      onEvent: ev => { if (state.engine === engine) onEngineEvent(ev); } });
     state.engine = engine;
     resetFlightUi(p);
     $('flight').classList.toggle('listen', !!s.listen);
@@ -306,9 +309,13 @@ async function begin() {
         // The click is "you're on air": it comes when the recogniser is actually listening, which on Android is a
         // noticeable beat after the press. Speak after the click and the start of the call isn't lost.
         onListening: () => { state.radio.keyClick(); $('ptt').querySelector('.ptt-label').textContent = 'SPEAK'; },
-        onUp: (text, meta) => {
+        // Off air the moment you let go. The words can take another second to arrive, and a button still showing
+        // TX meanwhile invited a second press.
+        onRelease: () => {
           state.radio.stopHeterodyne(); state.radio.keyClick(); $('ptt').querySelector('.ptt-label').textContent = 'HOLD TO TRANSMIT';
           $('ptt').classList.remove('keyed'); $('lamp-tx').classList.remove('on');
+        },
+        onUp: (text, meta) => {
           if ($('o-mine').checked) $('mine').textContent = text ? `You: ${text}` : (meta.error ? `Not recognised (${meta.error})` : 'Not recognised');
           engine.pilotTransmission(text, meta);
         },
@@ -318,15 +325,44 @@ async function begin() {
         isRadioBusy: () => state.radio.busy,
         onNotice: t => toast(t, 'info'),
       });
-      await state.ptt.init({ hotMic: $('o-hot').checked });
-    } else toast('This browser can’t recognise speech: you can listen, but not transmit.', 'warn');
+      // No microphone (refused, missing or busy): fly it listening, as a browser without speech recognition does.
+      try { await state.ptt.init({ hotMic: $('o-hot').checked }); }
+      catch (err) { console.error(err); state.ptt.destroy(); state.ptt = null; listenOnly(MIC_TROUBLE[err?.name] || `No microphone (${err.message || err}).`); }
+    } else listenOnly('This browser can’t recognise speech.');
     requestWakeLock();
     lampLoop();
+    flying = true;
     await engine.start();
   } catch (err) {
     console.error(err);
-    toast(`Couldn’t start: ${err.message || err}`, 'warn');
+    if (flying) toast(`Something went wrong: ${err.message || err}`, 'warn');
+    else { abandonFlight(); toast(`Couldn’t start: ${err.message || err}`, 'warn'); }
   } finally { $('begin').disabled = false; }
+}
+
+// What to do about a microphone that couldn't be had.
+const MIC_TROUBLE = {
+  NotAllowedError: 'The microphone is blocked for this site: allow it in the browser’s site settings and start again.',
+  NotFoundError: 'No microphone found.',
+  NotReadableError: 'The microphone couldn’t be opened: close anything else using it and start again.',
+};
+
+function listenOnly(why) {
+  $('ptt').disabled = true;
+  $('ptt').querySelector('.ptt-label').textContent = 'LISTEN ONLY';
+  toast(`${why} You can listen, but not transmit.`, 'warn');
+}
+
+// Out of a flight that never got going, or that stopped without reaching the debrief: nothing left running, and back
+// to the briefing. A flight that failed to start used to leave the flight screen up, End doing nothing and the
+// static hissing until a reload.
+function abandonFlight() {
+  clearInterval(legTimer);
+  state.engine?.stop(); state.engine = null;
+  state.ptt?.destroy(); state.ptt = null;
+  state.radio?.stopAll();
+  wakeLock?.release?.(); wakeLock = null;
+  show('brief');
 }
 
 function resetFlightUi(p) {
@@ -334,6 +370,8 @@ function resetFlightUi(p) {
   $('leg-bar').style.width = '0'; $('mine').hidden = true; $('toast').hidden = true;
   $('navdata').hidden = true; $('nd-alt').textContent = '----'; $('nd-qnh').textContent = '----'; $('nd-next').textContent = '';
   $('xpdr-pad').hidden = true; $('rh-xpdr').classList.remove('wanted', 'identing'); $('map-orbit').classList.remove('wanted');
+  $('ptt').disabled = false; $('ptt').classList.remove('keyed'); $('ptt').querySelector('.ptt-label').textContent = 'HOLD TO TRANSMIT';
+  $('lamp-tx').classList.remove('on');
   $('rh-reg').textContent = p.reg;
   $('rh-xpdr').classList.toggle('off', !p.transponder);
   $('rh-xpdr-mode').textContent = p.transponder ? 'ALT' : 'XPDR';    // as the head unit reads in Mode C
@@ -534,7 +572,8 @@ $('f-pause').addEventListener('click', () => {
     e.paused = !e.paused; $('f-pause').textContent = e.paused ? 'Resume' : 'Pause';
     if (e.paused) speechSynthesis.pause(); else speechSynthesis.resume();
   });
-  $('f-end').addEventListener('click', () => state.engine?.stop());
+  // A flight that has already stopped and still shows this screen never reached its debrief: End leaves it anyway.
+  $('f-end').addEventListener('click', () => { if (state.engine?.running) state.engine.stop(); else abandonFlight(); });
   bindMap();
   bindXpdr();
 }

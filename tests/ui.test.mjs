@@ -22,3 +22,10 @@ test('the toast is outside the screens, so it can be seen from any of them', () 
   for (const [block, id] of screens) assert.ok(!/id="toast"/.test(block), `the toast is trapped inside #${id}`);
   assert.match(html, /id="toast"/, 'and it still exists');
 });
+
+test('a toast never takes a press meant for what is under it', () => {
+  // It sat on the PTT button for 4.5 s and a press there did nothing, "try again" toasts included.
+  const css = readFileSync(new URL('../css/app.css', import.meta.url), 'utf8');
+  const rule = css.match(/^\.toast\s*\{[^}]*\}/m)?.[0] || '';
+  assert.match(rule, /pointer-events:\s*none/);
+});
