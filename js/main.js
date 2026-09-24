@@ -689,12 +689,12 @@ function renderTl(e) {
     correction: `ATC corrected you: “${e.text}”`, missed: 'No reply to ATC', late: 'Late report: ATC chased you', 'no-call': 'Expected call not made',
     blocked: 'Blocked: you transmitted over another station', 'hot-mic': 'Spoke without pressing PTT (not transmitted)', 'stepped-in': 'Called in the middle of another exchange',
     'wrong-callsign': `Answered a call for ${e.forCall}`, note: e.text, offscript: `Left the script: “${e.text}”. Claude took over.`,
-    'free-assessment': `You: “${e.text}”${e.assessment ? ` · ${e.assessment}` : ''}`, 'say-again': 'You asked for a repeat', answer: `Asked for ${e.asked}: “${e.text}”`,
+    'free-assessment': `You: “${e.text}”${e.assessment ? ` · ${e.assessment}` : ''}`, 'claude-error': `Claude couldn’t answer: ${e.text}`, 'say-again': 'You asked for a repeat', answer: `Asked for ${e.asked}: “${e.text}”`,
     'route-change': `Changed route: ${e.text}`, orbit: e.text, 'squawk-set': e.text, ident: 'Ident',
     action: `Did it: ${e.text}`, 'late-action': 'ATC had to chase you for it', 'no-action': `Never done: ${e.text}`,
     unexpected: `Unexpected call: “${e.text}”`, position: e.label, cue: e.text, atc: `ATC: ${e.text}`,
   };
-  const neutral = ['note', 'position', 'cue', 'atc', 'say-again', 'answer', 'free-assessment', 'route-change', 'orbit', 'squawk-set', 'ident', 'action'].includes(e.type);
+  const neutral = ['note', 'position', 'cue', 'atc', 'say-again', 'answer', 'free-assessment', 'claude-error', 'route-change', 'orbit', 'squawk-set', 'ident', 'action'].includes(e.type);
   return `<li class="tl event${neutral ? '' : ' bad'}">${t}<div class="${e.type === 'atc' ? 'atc' : ''}">${esc(labels[e.type] || e.type)}</div></li>`;
 }
 
@@ -706,7 +706,7 @@ async function claudeDebrief() {
     const { events, ctx, d } = state.lastEnd;
     $('d-claude').textContent = await c.debrief({ scenario: scenario(), ctx, events, stats: d.stats });
     btn.hidden = true;
-  } catch (err) { $('d-claude').textContent = `Couldn’t get a debrief: ${err.message}`; }
+  } catch (err) { $('d-claude').textContent = `Couldn’t get a debrief: ${err.reason || err.message}`; }
   finally { btn.disabled = false; btn.textContent = 'Ask Claude for a debrief'; }
 }
 

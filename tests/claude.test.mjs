@@ -36,3 +36,41 @@ test('the off-script controller is sent no effort: Haiku 4.5 does not take one',
   assert.deepEqual(out.transmissions, ['G-IA, roger']);
   assert.equal(sent[0].output_config, undefined);
 });
+
+// A stalled connection (one bar at the airfield) held the off-script controller silent, and End with it, until the
+// browser gave up on the socket.
+function stalled() {
+  globalThis.fetch = (url, opts) => new Promise((_, reject) => opts.signal.addEventListener('abort', () => reject(opts.signal.reason)));
+}
+const asked = { scenario: { title: 'Leeds zone transit' }, ctx, events: [], history: [], pilot: 'G-IA, request diversion' };
+
+test('a request that gets no answer gives up, and cancel() stops one straight away', async () => {
+  stalled();
+  await assert.rejects(new Claude({ apiKey: 'k', timeouts: { atc: 50, debrief: 50 } }).atc(asked), /no answer from Claude in 0 s/);
+  stalled();
+  const claude = new Claude({ apiKey: 'k' });
+  const pending = claude.atc(asked);
+  claude.cancel();
+  await assert.rejects(pending, e => e.name === 'AbortError');
+});
+
+test('a key that will never work says so, and is told apart from a busy moment', async () => {
+  const status = (code, body) => { globalThis.fetch = async () => ({ ok: false, status: code, text: async () => body }); };
+  const claude = new Claude({ apiKey: 'k' });
+  status(401, '{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}');
+  await assert.rejects(claude.atc(asked), e => e.permanent && /API key was refused/.test(e.reason));
+  status(400, '{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low"}}');
+  await assert.rejects(claude.atc(asked), e => e.permanent && /credit/.test(e.reason));
+  status(529, '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}');
+  await assert.rejects(claude.atc(asked), e => !e.permanent && e.status === 529);
+});
+
+// Only strings to say, and an end only when it says so: an object among the transmissions ended the session with an
+// error, and "end": "false" ended it too.
+test('a reply that breaks the shape keeps only what the engine can use', async () => {
+  reply({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{"transmissions": [{"text": "G-IA"}, null, "G-IA, roger", ""], "end": "false", "assessment": 7}' }] });
+  const out = await new Claude({ apiKey: 'k' }).atc(asked);
+  assert.deepEqual(out.transmissions, ['G-IA, roger']);
+  assert.equal(out.end, false);
+  assert.equal(out.assessment, null);
+});

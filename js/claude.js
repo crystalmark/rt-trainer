@@ -7,27 +7,52 @@ import { briefLine } from './scenarios/common.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
 
+// How long to wait for an answer. A stalled connection at the airfield otherwise held the controller silent, and End
+// with it, until the browser gave up on the socket: minutes.
+const TIMEOUTS = { atc: 15000, debrief: 90000 };
+
 export class Claude {
-  constructor({ apiKey, models = MODELS }) {
+  constructor({ apiKey, models = MODELS, timeouts = TIMEOUTS }) {
     this.apiKey = apiKey;
     this.models = models;
+    this.timeouts = timeouts;
+    this.inFlight = new AbortController();
   }
 
-  // `options` go into the request as they are (the debrief's effort). Anything short of a whole answer throws, so the
-  // caller can say so and offer another try: a reply cut off at max_tokens was shown as if complete.
-  async call(model, system, messages, maxTokens = 600, options = {}) {
-    const res = await fetch(API, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages, ...options }),
-    });
-    if (!res.ok) throw new Error(`Claude API ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const data = await res.json();
+  /** Stop whatever is being asked: the flight has ended, and nobody is waiting for the answer. */
+  cancel() { this.inFlight.abort(); this.inFlight = new AbortController(); }
+
+  // `extra` goes into the request as it is (the debrief's effort). Anything short of a whole answer throws, so the
+  // caller can say so and offer another try: a reply cut off at max_tokens was shown as if complete. An error the API
+  // gives back says whether trying again could help (`permanent`), and why not in the pilot's terms (`reason`).
+  async call(model, system, messages, { maxTokens = 600, timeout = 20000, extra = {} } = {}) {
+    const signals = [AbortSignal.timeout(timeout), this.inFlight.signal];
+    let data;
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': this.apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({ model, max_tokens: maxTokens, system, messages, ...extra }),
+        signal: AbortSignal.any ? AbortSignal.any(signals) : signals[0],
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        const reason = res.status === 401 ? 'the API key was refused: check it on the setup screen'
+          : res.status === 403 ? 'the API key isn’t allowed to do this'
+          : /credit/i.test(body) ? 'the API account has run out of credit' : null;
+        throw Object.assign(new Error(`Claude API ${res.status}: ${body.slice(0, 200)}`),
+          { status: res.status, reason, permanent: res.status >= 400 && res.status < 500 && ![408, 409, 429].includes(res.status) });
+      }
+      data = await res.json();
+    } catch (err) {
+      if (err.name === 'TimeoutError') throw new Error(`no answer from Claude in ${Math.round(timeout / 1000)} s`);
+      throw err;
+    }
     if (data.stop_reason === 'refusal') throw new Error(`Claude declined${data.stop_details?.explanation ? `: ${data.stop_details.explanation}` : ''}`);
     if (data.stop_reason === 'max_tokens') throw new Error('Claude’s reply was cut off before the end');
     const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
@@ -56,12 +81,15 @@ export class Claude {
       `Set end true only when the pilot has left your frequency or landed.`;
     const where = nav ? `The aircraft is now ${nav.where || 'on its route'}${nav.route.length ? `, routing ${nav.route.join(', ')}` : ''}.\n\n` : '';
     const msgs = [{ role: 'user', content: `Recent frequency log:\n${recent}\n\n${where}The pilot just transmitted: "${pilot}"\n\nRespond as ${ctx.unit}.` }];
-    const text = await this.call(this.models.atc, system, msgs, 400);
+    const text = await this.call(this.models.atc, system, msgs, { maxTokens: 400, timeout: this.timeouts.atc });
     const json = text.match(/\{[\s\S]*\}/);
     if (!json) throw new Error('No JSON from Claude');
     const out = JSON.parse(json[0]);
-    if (!Array.isArray(out.transmissions)) out.transmissions = [];
-    return out;
+    // Only what the engine can use: things to say, as strings, and an end only when it says so in so many words. An
+    // object among the transmissions ended the session with an error, and "end": "false" ended it as well.
+    const str = v => (typeof v === 'string' && v.trim() ? v : null);
+    return { transmissions: [].concat(out.transmissions ?? []).filter(str), assessment: str(out.assessment),
+      position: str(out.position), end: out.end === true, summary: str(out.summary) };
   }
 
   async debrief({ scenario, ctx, events, stats }) {
@@ -77,7 +105,7 @@ export class Claude {
     const msgs = [{ role: 'user', content: `Scenario: ${scenario.title} (${ctx.unit} ${ctx.freq}). Aircraft ${ctx.reg} (${ctx.abbr}), ${ctx.type}, ${ctx.transponder ? 'Mode S' : 'no transponder'}.\nScores: ${JSON.stringify(stats)}\n\nSession log:\n${lines}` }];
     // Sonnet 5 thinks unless told otherwise, inside the same max_tokens as its answer: at 900 the thinking could use
     // the lot and leave the debrief cut off, or empty. Low effort is plenty for 350 words, with room to finish them.
-    return this.call(this.models.debrief, system, msgs, 4000, { output_config: { effort: 'low' } });
+    return this.call(this.models.debrief, system, msgs, { maxTokens: 4000, timeout: this.timeouts.debrief, extra: { output_config: { effort: 'low' } } });
   }
 }
 

@@ -58,7 +58,7 @@ export function computeDebrief(events) {
 
   const readbackAtc = new Set(events.filter(e => e.type === 'readback').map(e => e.atcText));
   const timeline = events.filter(e => !(e.type === 'atc' && readbackAtc.has(e.text))).filter(e => ['atc', 'readback', 'call', 'correction', 'missed', 'late', 'no-call', 'blocked', 'hot-mic',
-    'stepped-in', 'wrong-callsign', 'note', 'offscript', 'free-assessment', 'say-again', 'answer', 'unexpected', 'position', 'cue',
+    'stepped-in', 'wrong-callsign', 'note', 'offscript', 'free-assessment', 'claude-error', 'say-again', 'answer', 'unexpected', 'position', 'cue',
     'route-change', 'orbit', 'squawk-set', 'ident', 'action', 'late-action', 'no-action'].includes(e.type) && !(e.type === 'atc' && !e.toPilot));
   return { stats, issues, timeline };
 }

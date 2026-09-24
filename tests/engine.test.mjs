@@ -700,3 +700,42 @@ test('an exchange on a frequency you have just left is not heard to the end', as
   assert.ok(radio.lines.some(l => /request zone entry/.test(l[1])), 'the exchange began');
   assert.ok(!radio.lines.some(l => /cleared to enter/.test(l[1])), 'and the rest of it was not heard on the new frequency');
 });
+
+// Off script, End did nothing while a request to Claude had stalled, and a key that would never work met every call
+// from then on with "say again", unexplained.
+function offScript(claude) {
+  const scenario = SCENARIOS.find(s => s.id === 'edinburgh-transit');
+  const clock = fakeClock(4000), radio = fakeRadio(clock);
+  let handler = () => {};
+  const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(2), claude, settings: { trafficDensity: 'quiet' }, onEvent: e => handler(e) });
+  const perfect = perfectPilot(engine), toasts = [];
+  let diverted = false;
+  handler = ev => {
+    if (ev.kind === 'toast') toasts.push(ev.text);
+    if (!diverted && ev.kind === 'awaiting' && ev.id === 'musselburgh') { diverted = true; sendWhenClear(engine, 'G-IA, request return to East Fortune due weather'); return; }
+    if (!diverted) perfect(ev);
+  };
+  return { engine, radio, toasts, flight: engine.start() };
+}
+
+test('End ends a flight even while Claude is being asked', async () => {
+  let asking = false;
+  const claude = { atc: () => new Promise((_, reject) => { asking = true; claude.cancel = () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })); }) };
+  const { engine, flight } = offScript(claude);
+  while (!asking) await new Promise(r => setTimeout(r, 5));
+  engine.stop();
+  const events = await Promise.race([flight, new Promise(r => setTimeout(() => r(null), 2000))]);
+  assert.ok(events, 'the flight ended');
+  assert.equal(events.at(-1).type, 'end');
+});
+
+test('a Claude key that will never work ends the flight with the reason, not "say again" for ever', async () => {
+  const reason = 'the API key was refused: check it on the setup screen';
+  const claude = { atc: async () => { throw Object.assign(new Error('Claude API 401'), { status: 401, permanent: true, reason }); } };
+  const { radio, toasts, flight } = offScript(claude);
+  const events = await flight;
+  assert.equal(events.at(-1).summary, `Ended off script: ${reason}`);
+  assert.ok(toasts.some(t => t.includes(reason)), JSON.stringify(toasts));
+  assert.ok(!radio.lines.some(l => /say again/.test(l[1])), 'no "say again"');
+  assert.ok(events.some(e => e.type === 'claude-error' && e.text === reason), 'and the debrief shows it');
+});

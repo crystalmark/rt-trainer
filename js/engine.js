@@ -674,7 +674,7 @@ export class Engine {
     return this.finish();
   }
 
-  stop() { if (this.running) { this.log('stopped', {}); this.running = false; this.radio.stopAll?.(); } }
+  stop() { if (this.running) { this.log('stopped', {}); this.running = false; this.radio.stopAll?.(); this.claude?.cancel?.(); } }
 
   finish() {
     this.running = false;
@@ -727,6 +727,7 @@ export class Engine {
     this.emit('toast', { level: 'info', text: 'Off script: Claude is now the controller (replies take 1–3 s).' });
     this.freeQueue = [firstTx];
     let quiet = 0;                     // minutes of quiet frequency with nothing from the pilot
+    let failed = false;                // Claude has failed once already, and the pilot has been told
     while (this.running) {
       if (!this.freeQueue.length) {
         const next = await this.waitPilot(60).catch(() => null);
@@ -743,7 +744,19 @@ export class Engine {
           route: this.nav.plan.points.filter(w => w.s > this.nav.s + 0.05).map(w => w.place.name) };
         resp = await this.claude.atc({ scenario: this.scenario, ctx: this.ctx, events: this.events, history: this.freeHistory, pilot: tx.text, nav });
       } catch (err) {
-        this.log('claude-error', { text: String(err.message || err) });
+        if (!this.running) break;                        // End, while Claude was being asked
+        this.log('claude-error', { text: err.reason || String(err.message || err) });
+        // A key that is wrong, revoked or out of credit won't come right by asking again, and the script can't be
+        // picked up once left: say why and end, rather than meet every call from here with "say again", unexplained.
+        if (err.permanent) {
+          this.emit('toast', { level: 'warn', text: `Claude can’t take over: ${err.reason || err.message}.` });
+          this.summary = `Ended off script: ${err.reason || 'Claude could not be used'}`;
+          break;
+        }
+        if (!failed) {
+          failed = true;
+          this.emit('toast', { level: 'warn', text: `Claude isn’t answering (${err.status ? `error ${err.status}` : err.message}): the controller will ask you to say again.` });
+        }
         await this.transmit('atc', '{CALL}, say again', { toPilot: true });
         continue;
       }
