@@ -19,9 +19,10 @@ function trafficInfo(s, id, traffic, text) {
 // Air/Ground operator gives information and asks how you would like to join, because nobody there can tell you
 // (a 2019 flight in shows exactly that: "traffic now short final runway two-four, how would you like to join?").
 // Weekdays when possible, says the airport, and otherwise blind calls on the same frequency.
+// Whether anyone is on the radio (ctx.blind when not) is settled before the flight reaches the frequency: settled here,
+// the operator had already been heard answering other aircraft on a frequency with nobody on it.
 async function arriveCarlisle(s, { from, where, position, pending = 'Call Carlisle Radio.' }) {
   const { ctx } = s;
-  ctx.blind = s.chance(0.25);
   const det = details(ctx, { from, to: 'carlisle', position, altitude: 2500, request: ['land', 'landing', 'join', 'inbound', 'airfield information'] });
   const detSoft = det.map(d => ({ ...d, hard: false, ask: undefined }));
   const initial = [P('PPR', ['ppr', 'prior permission'], { soft: true, why: 'Mention PPR so they can match you to the booking.' }), ...detSoft];
@@ -101,6 +102,7 @@ export const carlisleArrival = {
     ...CARLISLE,
   ],
   async run(s) {
+    s.ctx.blind = s.chance(0.25);                         // weekdays when possible: sometimes nobody is on
     await s.leg('10 nm north of Carlisle', 1.5, { cue: 'Call Carlisle Radio.' });
     return arriveCarlisle(s, { from: 'kirkbride', where: '10 miles north, north of the city', position: ['north', 'miles', 'city'], pending: 'Make your initial call.' });
   },
@@ -129,6 +131,7 @@ export const carlisleSouth = {
   ],
   async run(s) {
     const { ctx } = s;
+    const unstaffed = s.chance(0.25);                     // Carlisle Radio, when you get there
     await s.leg('Climbing out of Oxenhope', 3, { cue: 'Call London Information for a Basic Service.', early: true });
     const det = details(ctx, { from: 'oxenhope', to: 'carlisle', position: ['skipton', 'miles', 'overhead', 'oxenhope'], altitude: 3000, request: ['basic service'] });
     await initialCall(s, { unitName: 'London Information', det,
@@ -159,9 +162,9 @@ export const carlisleSouth = {
     // Answered ("changing to Carlisle Radio"), that is still London's business: it used to be taken for the first
     // call to Carlisle Radio, cutting the leg short.
     await s.atc(asked ? '{CALL}, frequency change approved' : '{CALL}, Basic Service terminated', {
-      reply: { id: 'qsy-ack', optional: true, items: [], model: asked ? 'Changing to Carlisle Radio, {CALL}' : 'Roger, {CALL}' } });
+      reply: { id: 'qsy-ack', optional: true, timeout: 5, items: [], model: asked ? 'Changing to Carlisle Radio, {CALL}' : 'Roger, {CALL}' } });
     // A new station: a new frequency, a new voice, and the full callsign again until they shorten it.
-    ctx.unit = 'Carlisle Radio'; ctx.abbreviated = false;
+    ctx.unit = 'Carlisle Radio'; ctx.abbreviated = false; ctx.blind = unstaffed;
     s.setRadio({ unit: 'Carlisle Radio', freq: '123.605' });
     await s.leg('Penrith towards Carlisle', 5, { cue: 'Call Carlisle Radio.', early: true });
     return arriveCarlisle(s, { from: 'oxenhope', where: '10 miles south, north of Penrith', position: ['south', 'miles', 'penrith'] });

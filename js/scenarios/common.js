@@ -183,6 +183,15 @@ export function londonInfoTraffic(s, { similar }) {
 }
 
 export function carlisleTraffic(s) {
+  // No Air/Ground operator: other pilots make blind calls, with their full callsigns (nobody has shortened them), and
+  // nobody answers. Made by dropping the operator's lines, one was a readback of information nobody had given.
+  if (s.ctx.blind) return pick(s, [
+    [['G-BOTE', 'Carlisle Traffic, G-BOTE, downwind 24, touch and go, Carlisle']],
+    [['G-BOTE', 'Carlisle Traffic, G-BOTE, final 24, touch and go, Carlisle']],
+    [['Coastguard 199', 'Carlisle Traffic, Coastguard 199, lifting from the northern apron, departing to the west, Carlisle']],
+    [['G-CFMW', 'Carlisle Traffic, G-CFMW, taxiing for runway 24, Carlisle']],
+    [['G-CFMW', 'Carlisle Traffic, G-CFMW, lining up runway 24, Carlisle']],
+  ]);
   const options = [
     [['G-BOTE', 'G-TE, downwind 24, touch and go'], ['atc', 'G-TE, roger']],
     [['G-BOTE', 'G-TE, final 24'], ['atc', 'G-TE, roger, surface wind 230 degrees 8 knots']],
@@ -190,11 +199,7 @@ export function carlisleTraffic(s) {
     [['G-CFMW', 'Carlisle Radio, G-CFMW, radio check and request departure information'], ['atc', 'G-CFMW, readability 5, runway 24 left-hand, QNH 1016, surface wind 240 degrees 10 knots'], ['G-CFMW', 'Runway 24, QNH 1016, G-MW']],
     [['G-CFMW', 'G-MW, lining up runway 24'], ['atc', 'G-MW, roger']],
   ];
-  const ex = pick(s, options);
-  if (!s.ctx.blind) return ex;
-  // No Air/Ground operator: other pilots make blind calls and nobody answers.
-  return ex.filter(l => l[0] !== 'atc' && !/radio check/.test(l[1]))
-    .map(l => [l[0], `Carlisle Traffic, ${l[1].replace(/^Carlisle Radio, /, '')}, Carlisle`]);
+  return pick(s, options);
 }
 
 /**

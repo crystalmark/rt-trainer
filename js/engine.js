@@ -212,7 +212,7 @@ export class Engine {
     if (this.steppedIn) {
       this.steppedIn = false;
       this.log('stepped-in', { text });
-      this.standbyPending = true;
+      this.standbyPending = !this.ctx.blind;
       this.queueAtc('{CALL}, standby', { delay: 0.5, bypassLock: true });
       return;
     }
@@ -291,6 +291,7 @@ export class Engine {
   }
 
   queueAtc(text, { delay = 0.6, bypassLock = false } = {}) {
+    if (this.ctx.blind) return;                         // nobody on the frequency to answer
     const run = async () => {
       try {
         await this.sleep(delay * 1000, false);
@@ -317,6 +318,7 @@ export class Engine {
       if (!this.earlyCall) this.earlyCall = tx;
       return;
     }
+    if (this.ctx.blind) return;                        // a blind call nobody was waiting for: nobody hears it either
     if (this.claude && looksLikeRequest(tx.text)) { this.abortReason = new OffScript(tx); return; }
     this.log('unexpected', { text: tx.text });
     this.queueAtc(looksLikeRequest(tx.text) ? '{CALL}, unable, continue as cleared' : '{CALL}, say again');
@@ -597,6 +599,9 @@ export class Engine {
     if (cue) { this.emit('cue', { text: cue }); this.log('cue', { text: cue }); }
     this.emit('awaiting', { waitKind: 'call', id, spec: items, cue });
     this.lastWaitKind = 'call'; this.currentSpec = items;
+    // A blind call, with nobody on the frequency: heard and marked, but nothing comes back. It used to draw "say
+    // again" and "say again your callsign" from a station that wasn't there.
+    const blind = !!this.ctx.blind;
     let nudged = 0, tries = 0;
     while (true) {
       const early = this.earlyCall;
@@ -605,21 +610,23 @@ export class Engine {
       if (initial && tx) this.initialDone = true;
       if (!tx) {
         if (optional) return null;
-        if (nudge && nudged < 2) { nudged++; this.log('late', { id }); await this.atc(nudge); continue; }
-        if (afterAtc && nudged < 2) { nudged++; this.log('missed', { atcText: this.lastToPilot }); await this.atc(this.lastToPilot.replace(/^[^,]*,\s*/, '{CALL}, ')); continue; }
+        if (!blind && nudge && nudged < 2) { nudged++; this.log('late', { id }); await this.atc(nudge); continue; }
+        if (!blind && afterAtc && nudged < 2) { nudged++; this.log('missed', { atcText: this.lastToPilot }); await this.atc(this.lastToPilot.replace(/^[^,]*,\s*/, '{CALL}, ')); continue; }
         this.log('no-call', { id });
         return null;
       }
-      if (isSayAgain(tx.text) && this.lastToPilot) {
+      if (!blind && isSayAgain(tx.text) && this.lastToPilot) {
         await this.atc(repeatOf(this.lastToPilot));
         continue;
       }
       const { text, r } = this.bestMatch(tx, extras.length ? [...items, ...extras] : items, 'call');
       for (const w of warn.concat(this.scenario.warn || [])) if (w.re.test(text.toLowerCase())) r.fillers.push(w.why);
-      if (!initial && r.hardRatio < 0.35 && looksLikeRequest(text) && this.claude) throw new OffScript(tx);
+      if (!blind && !initial && r.hardRatio < 0.35 && looksLikeRequest(text) && this.claude) throw new OffScript(tx);
       const counted = !extras.length || (countExtras && countExtras(r));
       const scored = counted ? r : match(text, items, this.ctx, { kind: 'call' });
       this.log('call', { id, text, heard: text === tx.text ? null : tx.text, alts: tx.alternatives || null, latency: tx.latency, result: summarise(scored), model: model ? this.fill(model) : null });
+      r.hasAll = (key) => r.items.some(i => i.key === key && i.matched);
+      if (blind) return r;
       if (!r.callsign) {
         await this.atc(initial ? 'Station calling {UNIT}, say again your callsign' : 'Station calling, say again callsign');
         continue;
@@ -635,7 +642,6 @@ export class Engine {
       }
       const still = r.hardMissing.filter(i => !i.ask && !i.matched);
       if (still.length && tries < 1) { tries++; await this.atc('{CALL}, say again'); continue; }
-      r.hasAll = (key) => r.items.some(i => i.key === key && i.matched);
       return r;
     }
   }

@@ -34,6 +34,9 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   The pilot's own state lives in the engine: `s.squawk()`, `s.identedWithin(sec)`, `s.orbiting()`, set from the UI
   by `engine.setSquawk(code)`, `engine.ident()`, `engine.setOrbit(on)`. `useSquawk(s, code)` in common.js is the
   standard "set the code ATC gave you" step, ending in "reset squawk … and ident" if it never appears.
+  `ctx.blind` marks a frequency with nobody on it (an unstaffed Air/Ground station, SafetyCom): the pilot's calls are
+  still judged, but nothing answers them, no "say again" and no chasing. Set it on the switch to that frequency,
+  before any traffic is heard, and clear it on the way off.
   `js/scenarios/listen.js` is the listen-out session: no expectations, the traffic loop does the talking.
   Templates: `{CS}` full callsign, `{AB}` abbreviated, `{CALL}` whichever ATC is currently using,
   `{TYPE}`, `{UNIT}`, `{SIM}` a confusable callsign. Build items with `P()` and helpers in `common.js`.

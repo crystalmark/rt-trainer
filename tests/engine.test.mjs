@@ -652,3 +652,33 @@ test('a change of route made just after a reply is not lost', async () => {
   assert.ok(resumed, events.at(-1).summary);
   assert.equal(events.at(-1).summary, 'Rerouted');
 });
+
+// Carlisle Radio and East Fortune Radio are not always staffed, and with nobody on, nothing answers. The operator used
+// to be heard answering other aircraft until the flight found out, and blind calls drew "say again" from nobody.
+test('with nobody on the radio at Carlisle or East Fortune, nothing answers', async () => {
+  for (const id of ['carlisle-arrival', 'carlisle-south', 'forth-bridges']) {
+    let unstaffed = 0;
+    for (let seed = 1; seed <= 40 && unstaffed < 3; seed++) {
+      const clock = fakeClock(4000), radio = fakeRadio(clock);
+      let handler = () => {};
+      const engine = new Engine({ scenario: SCENARIOS.find(s => s.id === id), profile: PROFILES[1], radio, clock, rng: seeded(seed),
+        settings: { trafficDensity: 'busy' }, onEvent: e => handler(e) });
+      const perfect = perfectPilot(engine);
+      const heard = [];
+      let blind = false;
+      handler = ev => {
+        if (engine.ctx.blind) blind = true;
+        if (engine.ctx.blind && ev.kind === 'radio' && ev.speaker === 'atc') heard.push(ev.text);
+        // Blind calls, with the callsign lost, as the recogniser often loses it.
+        if (engine.ctx.blind && ev.kind === 'awaiting') { sendWhenClear(engine, (ev.spec || []).map(i => i.any[0]).join(', ') || 'radio check'); return; }
+        perfect(ev);
+      };
+      const events = await engine.start();
+      if (!blind) continue;
+      unstaffed++;
+      assert.deepEqual(heard, [], `${id} seed ${seed}`);
+      assert.match(events.at(-1).summary || '', /blind/, `${id} seed ${seed}: ${events.at(-1).summary}`);
+    }
+    assert.ok(unstaffed > 0, `${id}: no unstaffed run in 40 seeds`);
+  }
+});

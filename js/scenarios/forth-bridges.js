@@ -60,6 +60,7 @@ export const forthBridges = {
     const { ctx } = s;
     const x = ctx.transponder;
     const staffed = s.chance(0.6);                        // someone on East Fortune Radio, or not
+    ctx.blind = !staffed;                                 // and if not, nobody answers anything on it
     const rwy = s.pick(['25L', '29L', '25L', '29L', '07R', '11R']), num = rwy.slice(0, 2);   // mostly westerlies
     const westerly = +num > 18, hand = westerly ? 'left-hand' : 'right-hand';
     const wind = westerly ? 'surface wind 260 degrees 10 knots' : 'surface wind 080 degrees 8 knots';
@@ -71,6 +72,8 @@ export const forthBridges = {
     const ef = staffed ? [] : [P('East Fortune Traffic', ['east fortune traffic', 'traffic'], { soft: true,
       why: 'With nobody on the radio, start blind calls “East Fortune Traffic” and end them “East Fortune”.' })];
     const efAck = () => (staffed ? s.atc('{CALL}, roger') : null);
+    // A reply that can be answered ("good day"): the answer is not the next call, which the leg after it waits for.
+    const efSays = (text, id, model = 'Roger, {CALL}') => s.atc(text, { reply: { id, optional: true, timeout: 5, items: [], model } });
 
     // ---------- on the ground at East Fortune ----------
     await s.leg('On the ground at East Fortune', 0.3, { cue: 'Make your first call.', early: true });
@@ -87,7 +90,7 @@ export const forthBridges = {
     await s.leg('Holding point, power checks', 0.3, { early: true });
     await s.expect({ id: 'lineup', cue: `Checks complete: lining up on runway ${rwy}.`, items: [...ef, P('lining up', ['lining up', 'line up', 'entering', 'departing']), P('runway', [num], { soft: true })],
       model: staffed ? `{CALL}, lining up runway ${rwy}` : `East Fortune Traffic, {CS}, lining up runway ${rwy}, East Fortune` });
-    if (staffed) await s.atc('{CALL}, roger, no reported traffic');
+    if (staffed) await efSays('{CALL}, roger, no reported traffic', 'lineup-ack');
 
     // ---------- airborne: the moving map takes over ----------
     s.fly(PLAN);
@@ -95,10 +98,10 @@ export const forthBridges = {
     await s.reach(1.5, { label: 'Departing East Fortune', early: true });
     await s.expect({ id: 'departing', cue: 'Airborne and heading west. Tell East Fortune you are leaving.', items: [...ef, P('departing', ['departing', 'leaving', 'changing'])],
       model: staffed ? '{CALL}, departing to the west, changing to Edinburgh Approach' : 'East Fortune Traffic, {CS}, departing to the west, East Fortune' });
-    if (staffed) await s.atc('{CALL}, roger, good day');
+    if (staffed) await efSays('{CALL}, roger, good day', 'departing-ack', 'Good day, {CALL}');
 
     // ---------- Edinburgh Approach ----------
-    ctx.unit = 'Edinburgh Approach'; ctx.abbreviated = false;
+    ctx.unit = 'Edinburgh Approach'; ctx.abbreviated = false; ctx.blind = false;
     s.setRadio({ unit: 'Edinburgh Approach', freq: '121.205' });
     await s.reach(3, { label: 'Edinburgh Approach 121.205', cue: 'Call Edinburgh Approach when there is a gap.', early: true });
     const here = whereIs(area, s.position());
@@ -214,7 +217,7 @@ export const forthBridges = {
     await useSquawk(s, '7000', { chase: false });
 
     // ---------- home: East Fortune ----------
-    ctx.unit = 'East Fortune Radio'; ctx.abbreviated = false;
+    ctx.unit = 'East Fortune Radio'; ctx.abbreviated = false; ctx.blind = !staffed;
     s.setRadio({ unit: 'East Fortune Radio', freq: '118.755' });
     await s.expect({ id: 'rejoin', cue: 'Call East Fortune.', items: [...ef, P('rejoining', ['rejoin', 'rejoining', 'join', 'inbound', 'overhead', 'airfield information'])],
       model: staffed ? `East Fortune Radio, {CS}, 5 miles west, altitude ${ALTITUDE} feet, rejoining, request airfield information`
@@ -234,7 +237,7 @@ export const forthBridges = {
     await s.leg('Base leg', 1.2, { early: true });
     await s.expect({ id: 'final', cue: `Final ${rwy}.`, items: [...ef, P('final', ['final']), P('runway', [num], { soft: true })],
       model: staffed ? `{CALL}, final ${rwy}` : `East Fortune Traffic, {CS}, final ${rwy}, East Fortune` });
-    if (staffed) await s.atc(`{CALL}, roger, ${wind}`);
+    if (staffed) await efSays(`{CALL}, roger, ${wind}`, 'final-ack');
     await s.leg('Landing', 0.5, { early: true });
     await s.expect({ id: 'vacated', cue: 'Landed and clear of the runway.', items: [...ef, P('vacated', ['vacated', 'clear of the runway', 'runway clear', 'clear of'])],
       model: staffed ? '{CALL}, runway vacated' : `East Fortune Traffic, {CS}, runway vacated, East Fortune` });
