@@ -13,7 +13,7 @@ const CAP = 400;
 // are still words the recogniser produced, and an off-script flight consists of nothing else — which is how
 // this log managed to record a whole flight as zero transmissions.
 const JUDGED = ['call', 'readback'];
-const UNJUDGED = ['free-assessment', 'unexpected', 'stepped-in', 'wrong-callsign', 'blocked'];
+const UNJUDGED = ['free-assessment', 'unexpected', 'stepped-in', 'wrong-callsign', 'blocked', 'answer', 'callsign-given', 'say-again'];
 
 /** One row per transmission from an engine event log. Pure: storage and the DOM are somebody else's problem. */
 export function rowsFrom(events, { scenario = '', reg = '', at = Date.now() } = {}) {
@@ -29,6 +29,7 @@ export function rowsFrom(events, { scenario = '', reg = '', at = Date.now() } = 
       raw: e.heard || text,                             // what it offered first
       norm,
       folded: norm !== tokens(text, { folds: false }).join(' '),
+      rescued: !!e.rescued,                             // passed only because of the table (decided when it was marked)
       score: r.score ?? null,
       missing: r.missing || [],
       subs: (r.substitutions || []).map(s => s.said).filter(Boolean),
@@ -52,7 +53,8 @@ export function stats(rows) {
     heardNothing: rows.filter(r => r.heardNothing).length,         // the recogniser returned no words at all
     failed,                                                        // a hard item missing even after the folds
     folded: rows.filter(r => r.folded).length,                     // the table changed the words
-    rescued: judged.filter(r => r.folded && !r.missing.length).length,
+    // A row kept from before `rescued` was recorded falls back to what used to be counted.
+    rescued: judged.filter(r => r.rescued ?? (r.folded && !r.missing.length)).length,
     otherGuess: rows.filter(r => r.used).length,                   // best-of-five earned its keep
     substituted: rows.filter(r => r.subs.length).length,
     medianScore: median(rows.map(r => r.score).filter(v => v != null)),

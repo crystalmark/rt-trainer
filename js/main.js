@@ -31,6 +31,9 @@ const isProfile = p => p && typeof p.id === 'string' && typeof p.reg === 'string
   && Number.isFinite(p.speedKt) && typeof p.transponder === 'boolean';
 const storedProfiles = () => { const v = store.get('profiles', null); return Array.isArray(v) && v.length && v.every(isProfile) ? v : PROFILES; };
 const pastSessions = () => { const v = store.get('history', []); return Array.isArray(v) ? v.filter(x => x && typeof x === 'object' && x.stats) : []; };
+// Whether a flight gave the debrief anything to judge: a call made, or one that should have been. One ended before
+// either showed as a "Clean session", with green tiles beside a score of "–", and went into the history.
+const judged = stats => !!(stats.transmissions || stats.missedCalls || stats.lateReports);
 
 const state = {
   profiles: storedProfiles(),
@@ -620,9 +623,11 @@ function onEnd({ events, ctx, summary }) {
   state.lastEnd = { events, ctx, summary, d };
   // What the recogniser made of each transmission, for deciding whether the mishearing table is converging.
   try { heardAppend(LS, rowsFrom(events, { scenario: s.id, reg: ctx.reg })); } catch { /* storage off */ }
-  const h = pastSessions();
-  h.unshift({ date: new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }), title: s.title, reg: ctx.reg, summary, stats: d.stats });
-  store.set('history', h.slice(0, 30));
+  if (judged(d.stats)) {                          // an empty session would push real ones out of the eight shown
+    const h = pastSessions();
+    h.unshift({ date: new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }), title: s.title, reg: ctx.reg, summary, stats: d.stats });
+    store.set('history', h.slice(0, 30));
+  }
   renderDebrief(s, ctx, summary, d);
   show('debrief');
 }
@@ -631,17 +636,20 @@ function renderDebrief(s, ctx, summary, { stats, issues, timeline }) {
   $('d-eyebrow').textContent = `${s.title} · ${ctx.reg}`;
   $('d-summary').textContent = summary || 'Session ended early.';
   const st = (label, v, cls = '') => `<div class="stat ${cls}"><b>${v ?? '–'}</b><span>${label}</span></div>`;
+  const good = judged(stats) ? 'good' : '';
   $('d-stats').innerHTML = [
-    st('average call score', stats.averageScore, stats.averageScore >= 85 ? 'good' : stats.averageScore < 65 ? 'bad' : ''),
+    st('average call score', stats.averageScore, stats.averageScore == null ? '' : stats.averageScore >= 85 ? 'good' : stats.averageScore < 65 ? 'bad' : ''),
     st('readbacks right first time', `${stats.readbacksRightFirstTime}/${stats.readbacks}`, stats.readbacks && stats.readbacksRightFirstTime === stats.readbacks ? 'good' : ''),
-    st('ATC corrections', stats.corrections, stats.corrections ? 'bad' : 'good'),
-    st('missed calls', stats.missedCalls, stats.missedCalls ? 'bad' : 'good'),
+    st('ATC corrections', stats.corrections, stats.corrections ? 'bad' : good),
+    st('missed calls', stats.missedCalls, stats.missedCalls ? 'bad' : good),
     st('spoke without PTT', stats.unkeyedSpeech, stats.unkeyedSpeech ? 'bad' : ''),
     st('blocked transmissions', stats.blocked, stats.blocked ? 'bad' : ''),
-    st('late or missed reports', stats.lateReports, stats.lateReports ? 'bad' : 'good'),
+    st('late or missed reports', stats.lateReports, stats.lateReports ? 'bad' : good),
     st('median reply time (s)', stats.medianResponseSec),
   ].join('');
-  $('d-issues').innerHTML = issues.length ? issues.slice(0, 6).map(i => `<li><b>${esc(i.title)}</b><span>${esc(i.detail)}</span></li>`).join('') : '<li><b>Clean session.</b><span>Try it busier, faster, or with refusals set to “More often”.</span></li>';
+  $('d-issues').innerHTML = issues.length ? issues.slice(0, 6).map(i => `<li><b>${esc(i.title)}</b><span>${esc(i.detail)}</span></li>`).join('')
+    : judged(stats) ? '<li><b>Clean session.</b><span>Try it busier, faster, or with refusals set to “More often”.</span></li>'
+    : '<li><b>Nothing to debrief.</b><span>The flight ended before your first call.</span></li>';
   $('d-timeline').innerHTML = timeline.map(renderTl).join('');
   $('d-claude').textContent = '';
   const hasKey = !!$('o-key').value.trim();
@@ -657,7 +665,7 @@ function renderHeard(rows) {
   $('d-heard').innerHTML = [
     st('transmissions', h.transmissions),
     st('rescued by the mishearing table', h.rescued, h.rescued ? 'good' : ''),
-    st('still failed', h.failed, h.failed ? 'bad' : 'good'),
+    st('still failed', h.failed, h.failed ? 'bad' : h.judged ? 'good' : ''),     // nothing marked isn't nothing failed
     st('nothing recognised', h.heardNothing, h.heardNothing ? 'bad' : ''),
     st('a later guess matched better', h.otherGuess),
   ].join('');

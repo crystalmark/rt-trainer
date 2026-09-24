@@ -13,7 +13,8 @@ export function computeDebrief(events) {
     readbacksRightFirstTime: firstAttempts.filter(e => !e.corrected).length,
     corrections: count('correction'),
     missedCalls: count('missed'),
-    lateReports: count('late') + count('no-call'),
+    // Each report once, however often ATC chased it: counted per chase, one report never made was three.
+    lateReports: new Set(events.filter(e => e.type === 'late' || e.type === 'no-call').map(e => e.id)).size,
     blocked: count('blocked'),
     unkeyedSpeech: count('hot-mic'),
     steppedIn: count('stepped-in'),

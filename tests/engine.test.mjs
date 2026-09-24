@@ -793,3 +793,28 @@ test('reading back a frequency change as "changing frequency" is fine', async ()
   assert.ok(events.some(e => e.type === 'readback' && /changing frequency/.test(e.text)), 'the readback was made');
   assert.ok(!events.some(e => e.type === 'correction'), JSON.stringify(events.filter(e => e.type === 'correction')));
 });
+
+// "Rescued by the mishearing table" is a transmission that passed only because of a fold. Any transmission a fold had
+// touched used to count, "ft" for "feet" included, which overstated what patching the table buys.
+test('a transmission is rescued only when the fold made the difference', async () => {
+  const { rowsFrom, stats } = await import('../js/heard.js');
+  const clock = fakeClock(400), radio = fakeRadio(clock);
+  let engine;
+  const scenario = {
+    id: 'rescued', title: 'Rescued', unit: 'Leeds Radar', freq: '134.580', briefing: () => [['Aircraft', 'G-CZIA']],
+    async run(s) {
+      s.ctx.abbreviated = true;
+      await s.atc('{CALL}, confirm you are not transponder equipped', { reply: { id: 'xpdr', items: [P('affirm', ['affirm'])] } });
+      await s.atc('{CALL}, squawk 5634', { readback: [SQUAWK('5634')] });
+      s.end('Done');
+    },
+  };
+  const answers = { xpdr: 'affirmative, golf india alpha', readback: 'escort 5634, golf india alpha' };
+  engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(1), settings: { trafficDensity: 'quiet' },
+    onEvent: ev => { if (ev.kind === 'awaiting') sendWhenClear(engine, answers[ev.id || ev.waitKind]); } });
+  const events = await engine.start();
+  const rows = rowsFrom(events);
+  assert.deepEqual(rows.map(r => [r.kind, r.folded, r.rescued]), [['call', true, true], ['readback', true, false]],
+    '"affirmative" needed its fold; "escort" was folded but the code alone would have done');
+  assert.equal(stats(rows).rescued, 1);
+});

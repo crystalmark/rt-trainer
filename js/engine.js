@@ -540,15 +540,20 @@ export class Engine {
 
   async atc(text, { readback = null, model = null, timeout, clearance = false, reply = null, hold = true } = {}) {
     if (hold) this.trafficHoldUntil = this.now() + 12000;
-    await this.withChannel(async () => {
+    const said = await this.withChannel(async () => {
       await this.sleep(this.rand(...this.settings.atcDelay) * 1000);
-      await this.transmit('atc', text, { toPilot: true });
+      return this.transmit('atc', text, { toPilot: true });
     });
+    // The answer is filled in now, with the callsign as this call used it. Filled after the switch to the short form
+    // below, the first readback was quoted with an abbreviation ATC hadn't used, and its model answer taught the pilot
+    // to abbreviate first, which CAP 413 does not allow.
+    const answer = m => (m ? this.fill(m) : m);
+    const readbackModel = answer(model), replyModel = answer(reply?.model);
     if (/\{AB\}|\{CALL\}/.test(text)) this.ctx.abbreviated = true;
-    this.lastToPilot = this.fill(text);
+    this.lastToPilot = said.display;
     this.lastToPilotAt = this.now();
-    if (readback) return this.readback(readback, text, { model, timeout, clearance });
-    if (reply) return this.expect({ ...reply, afterAtc: true });
+    if (readback) return this.readback(readback, text, { model: readbackModel, timeout, clearance, atcText: said.display });
+    if (reply) return this.expect({ ...reply, model: replyModel, afterAtc: true });
     return null;
   }
 
@@ -567,9 +572,18 @@ export class Engine {
     return best;
   }
 
-  async readback(spec, original, { model, timeout, clearance } = {}) {
+  /**
+   * Did the mishearing table save this transmission? Only if, without its folds, a hard item goes missing. The speech
+   * recognition log used to count anything the table had touched ("ft" for "feet" included) as rescued, and so
+   * overstated what patching the table buys.
+   */
+  rescued(text, r, spec, kind) {
+    return !r.hardMissing.length && match(text, spec, this.ctx, { kind, folds: false }).hardMissing.length > 0;
+  }
+
+  async readback(spec, original, { model, timeout, clearance, atcText: said } = {}) {
     let attempts = 0, misses = 0, current = spec;
-    const atcText = this.fill(original);
+    const atcText = said ?? this.fill(original);          // as transmitted
     while (true) {
       this.trafficHoldUntil = this.now() + 15000;
       this.emit('awaiting', { waitKind: 'readback', spec: current, atcText });
@@ -589,9 +603,10 @@ export class Engine {
         continue;
       }
       const { text, r } = this.bestMatch(tx, current, 'readback');
+      const rescued = this.rescued(text, r, current, 'readback');
       for (const w of this.scenario.warn || []) if (w.re.test(text.toLowerCase())) r.fillers.push(w.why);
       if (r.hardRatio < 0.35 && looksLikeRequest(text) && this.claude) throw new OffScript(tx);
-      const ev = this.log('readback', { atcText, text, heard: text === tx.text ? null : tx.text, alts: tx.alternatives || null, attempt: attempts + 1, latency: tx.latency, result: summarise(r), model: model ? this.fill(model) : null });
+      const ev = this.log('readback', { atcText, text, heard: text === tx.text ? null : tx.text, alts: tx.alternatives || null, attempt: attempts + 1, latency: tx.latency, result: summarise(r), model: model ? this.fill(model) : null, ...(rescued ? { rescued } : {}) });
       if (!r.callsign) {
         await this.atc('Station reading back, say callsign');
         const tx2 = await this.waitPilot(this.settings.replyTimeout);
@@ -632,7 +647,10 @@ export class Engine {
         if (optional) return null;
         if (!blind && nudge && nudged < 2) { nudged++; this.log('late', { id }); await this.atc(nudge); continue; }
         if (!blind && afterAtc && nudged < 2) { nudged++; this.log('missed', { atcText: this.lastToPilot }); await this.atc(this.lastToPilot.replace(/^[^,]*,\s*/, '{CALL}, ')); continue; }
-        this.log('no-call', { id });
+        // Unanswered, ATC's calls are missed calls, the last one included as a readback's is, not also a report that
+        // never came.
+        if (!blind && afterAtc) this.log('missed', { atcText: this.lastToPilot });
+        this.log(afterAtc ? 'no-reply' : 'no-call', afterAtc ? { id, atcText: this.lastToPilot } : { id });
         return null;
       }
       if (!blind && isSayAgain(tx.text) && this.lastToPilot) {
@@ -640,11 +658,14 @@ export class Engine {
         continue;
       }
       const { text, r } = this.bestMatch(tx, extras.length ? [...items, ...extras] : items, 'call');
+      const rescued = this.rescued(text, r, items, 'call');
       for (const w of warn.concat(this.scenario.warn || [])) if (w.re.test(text.toLowerCase())) r.fillers.push(w.why);
       if (!blind && !initial && r.hardRatio < 0.35 && looksLikeRequest(text) && this.claude) throw new OffScript(tx);
       const counted = !extras.length || (countExtras && countExtras(r));
       const scored = counted ? r : match(text, items, this.ctx, { kind: 'call' });
-      this.log('call', { id, text, heard: text === tx.text ? null : tx.text, alts: tx.alternatives || null, latency: tx.latency, result: summarise(scored), model: model ? this.fill(model) : null });
+      // Reply time is for answers to ATC: a report made unprompted is timed from whatever ATC last said, however long
+      // ago, and at a faster time scale made a prompt pilot "slow to answer".
+      this.log('call', { id, text, heard: text === tx.text ? null : tx.text, alts: tx.alternatives || null, latency: afterAtc || nudged ? tx.latency : null, result: summarise(scored), model: model ? this.fill(model) : null, ...(rescued ? { rescued } : {}) });
       r.hasAll = (key) => r.items.some(i => i.key === key && i.matched);
       if (blind) return r;
       if (!r.callsign) {

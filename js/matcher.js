@@ -45,7 +45,7 @@ export function hasAny(text, phrases) {
  *             orderOk, fillers, score, hardRatio }}
  */
 export function match(text, spec, ctx, opts = {}) {
-  const toks = tokens(text);
+  const toks = tokens(text, { folds: opts.folds !== false });   // folds: false, the recogniser's words as they came
   const raw = String(text || '').toLowerCase();
   const items = (spec || []).map(item => {
     let index = -1;
