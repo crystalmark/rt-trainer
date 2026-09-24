@@ -10,6 +10,7 @@ import { briefLine, P, SQUAWK, useSquawk } from '../js/scenarios/common.js';
 import { AREAS } from '../js/areas/index.js';
 import { parseRoute, planRoute } from '../js/route.js';
 import { customScenario } from '../js/scenarios/custom.js';
+import { inside } from '../js/geo.js';
 
 function run(scenario, profile, seed, { settings = {}, pilot = perfectPilot, override } = {}) {
   const clock = fakeClock(4000);
@@ -195,6 +196,30 @@ test("the recogniser's other guesses are matched too", async () => {
   assert.match(rb.text, /squawk 5634/, 'the better guess was used');
   assert.match(rb.heard || '', /1000/, 'and the first one is kept for the debrief');
   assert.equal(events.filter(e => e.type === 'correction').length, 0, 'so no correction was needed');
+});
+
+// A scripted transit is only practice if it goes where its clearance says. Edinburgh's was cleared into the control zone
+// via Musselburgh and then flown direct to Kirkcaldy Harbour: both outside the CTR (a 10 nm circle, AD 2.17), and the
+// whole line under CTA 2's 2500 ft base, so at 2000 ft it never touched controlled airspace at all.
+test('every scripted zone transit goes into the zone it is cleared into', async () => {
+  // Flown as legs there is no route to check, so each such scenario lists here the points it flies that are in the zone.
+  const legs = { 'leeds-transit': { area: 'leeds', inZone: ['Salts Mill', 'Eccup Reservoir'] } };
+  for (const scenario of SCENARIOS) {
+    const { events } = await run(scenario, PROFILES[1], 1, { settings: { refusalBias: -1, trafficDensity: 'quiet' } });
+    for (const e of events.filter(e => e.type === 'atc' && /control zone via/i.test(e.text))) {
+      const via = e.text.match(/control zone via ([^,.]+)/i)[1];
+      if (scenario.plan) {                                         // flown on the map: the plan says where it goes
+        const T = scenario.plan.transit, point = scenario.plan.points.find(w => w.place.name === via);
+        assert.ok(T?.intoZone, `${scenario.id}: cleared into the zone, but the route never enters it`);
+        assert.ok(point && point.s <= T.sIn && T.sIn - point.s < 2, `${scenario.id}: cleared via ${via}, but the zone starts ${(T.sIn - point?.s).toFixed(1)} nm after it`);
+        continue;
+      }
+      const known = legs[scenario.id];
+      assert.ok(known, `${scenario.id}: cleared into the zone via ${via}, with no route to check that it goes in: fly it on the map, or list its points here`);
+      const area = AREAS.find(a => a.id === known.area), ctr = area.airspace.find(v => v.kind === 'CTR');
+      for (const name of known.inZone) assert.ok(inside(area.places.find(p => p.name === name), ctr.poly), `${scenario.id}: ${name} is outside the zone`);
+    }
+  }
 });
 
 // The briefing screen puts one fact on each row, so each entry must be a labelled one-liner. A three-sentence
