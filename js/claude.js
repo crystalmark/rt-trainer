@@ -13,7 +13,9 @@ export class Claude {
     this.models = models;
   }
 
-  async call(model, system, messages, maxTokens = 600) {
+  // `options` go into the request as they are (the debrief's effort). Anything short of a whole answer throws, so the
+  // caller can say so and offer another try: a reply cut off at max_tokens was shown as if complete.
+  async call(model, system, messages, maxTokens = 600, options = {}) {
     const res = await fetch(API, {
       method: 'POST',
       headers: {
@@ -22,11 +24,15 @@ export class Claude {
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
-      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages }),
+      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages, ...options }),
     });
     if (!res.ok) throw new Error(`Claude API ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const data = await res.json();
-    return data.content.map(c => c.text || '').join('');
+    if (data.stop_reason === 'refusal') throw new Error(`Claude declined${data.stop_details?.explanation ? `: ${data.stop_details.explanation}` : ''}`);
+    if (data.stop_reason === 'max_tokens') throw new Error('Claude’s reply was cut off before the end');
+    const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+    if (!text.trim()) throw new Error('Claude sent back an empty reply');
+    return text;
   }
 
   async atc({ scenario, ctx, events, history, pilot, nav = null }) {
@@ -69,7 +75,9 @@ export class Claude {
       'Structure: a two-sentence overall verdict; then "What to fix" with the three most important points (each: what happened, why it matters, the exact wording to use); ' +
       'then "Good habits" with one or two things done well; then a one-line "Next session" suggestion. No more than 350 words. Plain text with simple headings.';
     const msgs = [{ role: 'user', content: `Scenario: ${scenario.title} (${ctx.unit} ${ctx.freq}). Aircraft ${ctx.reg} (${ctx.abbr}), ${ctx.type}, ${ctx.transponder ? 'Mode S' : 'no transponder'}.\nScores: ${JSON.stringify(stats)}\n\nSession log:\n${lines}` }];
-    return this.call(this.models.debrief, system, msgs, 900);
+    // Sonnet 5 thinks unless told otherwise, inside the same max_tokens as its answer: at 900 the thinking could use
+    // the lot and leave the debrief cut off, or empty. Low effort is plenty for 350 words, with room to finish them.
+    return this.call(this.models.debrief, system, msgs, 4000, { output_config: { effort: 'low' } });
   }
 }
 
