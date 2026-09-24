@@ -298,6 +298,17 @@ test('an abbreviated callsign survives a clipped alpha too', () => {
   assert.equal(form('golf India hotel'), null, 'a different aircraft');
 });
 
+// "Golf India" said quickly arrives as one word, and the callsign with it: "gulfinderella" drew "Station reading back,
+// say callsign" on 24 September, and the rest are Chrome's other guesses from the same flights.
+test('a callsign run together into one word is still found', () => {
+  const form = t => (findCallsign(tokens(t), 'G-CZIA') || {}).form || null;
+  assert.equal(form('resuming own and navigation to Ilkley gulfinderella'), 'abbr');
+  assert.equal(form('resuming own and navigation to Ilkley gulfinder Alpha'), 'abbr');
+  assert.equal(form('gulfindia alpha reporting overhead Ilkley'), 'abbr');
+  assert.equal(form('looking out gulfindia Alpha'), 'abbr');
+  assert.equal(form('gulfindia hotel'), null, 'still a different aircraft');
+});
+
 // "I say again" is the pilot repeating their own message, usually because ATC asked: it was taken as the pilot asking
 // ATC to repeat, and the message thrown away. The words as heard decide it, because normalised, "I" is India.
 test('"I say again" is a message, "say again" a request', () => {
