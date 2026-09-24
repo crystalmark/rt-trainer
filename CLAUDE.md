@@ -54,7 +54,8 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   (hold-to-talk, Web Speech API, hot-mic detector), `js/claude.js` (browser calls to the
   Anthropic API), `js/debrief.js` (stats + issues), `js/main.js` (UI).
 - Your own route: `js/areas/<area>.js` holds an area's airspace (copied point for point from the AIP, arcs
-  included), VRPs (`js/data/vrps.js`, generated from the NATS dataset) with radio names and `hear` variants for
+  included, and its limits in the AIP's words, `lower: '2500 FT ALT', upper: 'FL85'`, which `prepare()` reads as
+  feet), VRPs (`js/data/vrps.js`, generated from the NATS dataset) with radio names and `hear` variants for
   speech recognition, and landmarks. `js/geo.js` puts it all on a flat nm grid; `js/route.js` parses a described
   route and plans it (entry/exit at the altitude, the "via" point, reports, CTAs close overhead);
   `js/scenarios/custom.js` turns the plan into a transit or a Basic Service flight. Areas so far: Leeds
