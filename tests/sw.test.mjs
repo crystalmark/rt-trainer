@@ -32,3 +32,35 @@ test('service worker: precaches every app file, and only files that exist', () =
   const modules = readdirSync(new URL('js/', root), { recursive: true }).filter(f => f.endsWith('.js')).map(f => `js/${f}`);
   for (const m of modules) assert.ok(FILES.includes(m), `${m} is not in sw.js FILES, so the app breaks offline`);
 });
+
+// Run sw.js's fetch handler against a fake network and cache.
+function serve(network) {
+  const kept = new Map(), handlers = {};
+  const ctx = vm.createContext({
+    self: { addEventListener: (type, fn) => { handlers[type] = fn; }, skipWaiting: async () => {}, clients: { claim: async () => {} } },
+    caches: { keys: async () => [], delete: async () => true, match: async req => kept.get(req.url),
+      open: async () => ({ put: async (req, res) => { kept.set(req.url, res); }, addAll: async () => {} }) },
+    fetch: async req => network(req), location: { origin: 'https://crystalmark.co.uk' }, URL,
+  });
+  vm.runInContext(readFileSync(new URL('sw.js', root), 'utf8'), ctx);
+  return async path => {
+    let response; const waits = [];
+    handlers.fetch({ request: { url: `https://crystalmark.co.uk/rt/${path}`, method: 'GET' }, respondWith: p => { response = p; }, waitUntil: p => waits.push(p) });
+    const r = await response; await Promise.all(waits); return r;
+  };
+}
+const answer = (status, body) => ({ status, ok: status >= 200 && status < 300, body, clone: () => answer(status, body) });
+
+// One CloudFront hiccup while online replaced the good copy with the error page, and offline that was all there was:
+// the app would not start without signal.
+test('service worker: an error from the server never replaces the good copy, and gets the cached one instead', async () => {
+  let net = () => answer(200, 'good');
+  const get = serve(req => net(req));
+  assert.equal((await get('js/engine.js')).body, 'good');
+  net = () => answer(503, 'CloudFront error page');
+  assert.equal((await get('js/engine.js')).body, 'good', 'a server error gets the cached copy');
+  net = () => { throw new TypeError('offline'); };
+  assert.equal((await get('js/engine.js')).body, 'good', 'and offline, the good copy is still there');
+  net = () => answer(404, 'not found');
+  assert.equal((await get('js/nothing.js')).status, 404, 'a file that is not there is passed on as it is');
+});
