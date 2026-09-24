@@ -32,7 +32,10 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
   const q1 = rng() < 0.4 ? q0 + (rng() < 0.5 ? 1 : -1) : q0;         // what ATC gives you
   const squawk = area.squawks + octal(rng) + octal(rng);
   const notAbove = Math.ceil(altitude / 500) * 500;
-  const vrps = area.places.filter(p => p.kind === 'vrp').map(p => p.name).join(', ');
+  // The VRPs on the way, in the order you pass them. Every one in the area made a paragraph of names on a phone, most of
+  // them nowhere near the route.
+  const vrps = area.places.filter(p => p.kind === 'vrp').map(p => ({ p, n: planned.nearestS?.(p) }))
+    .filter(v => v.n && v.n.d <= 5).sort((a, b) => a.n.s - b.n.s).map(v => v.p.name).join(', ');
   // How far the flight has got, so a change of route can pick up from there.
   const st = { service: false, approaching: null, report: null, identified: false, cleared: false, controlSaid: false,
     left: false, refused: false, qnhNoted: false };
@@ -61,7 +64,8 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
       ['Ask for', T ? `A Basic Service from ${area.unit}, and ${T.intoZone ? 'a zone transit' : 'a transit through their controlled airspace'}.` : `A Basic Service from ${area.unit}.`],
       ...planned.under.map(u => ['Careful', `You pass under ${u.volume.name}: its base is ${u.volume.base} ft, only ${u.gap} ft above you.`, 'warn']),
       ...planned.warnings.map(w => ['Careful', w, 'warn']),
-      ['VRPs', `${vrps}. They're reporting references: pass near them rather than overhead.`],
+      vrps ? ['VRPs', `${vrps}.`] : null,
+      vrps ? ['VRPs', 'They’re reporting references: pass near them rather than overhead.'] : null,
       ...area.facts.map(f => ['Local', f]),
       T ? ['Plan B', 'If the transit is refused, route round remaining outside controlled airspace: tap a place on the map, then Direct to or Divert.'] : null,
     ].filter(Boolean);

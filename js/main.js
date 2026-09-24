@@ -120,6 +120,7 @@ function renderRoutePanel() {
   if (!area) return;
   const r = state.routes[area.id] || { text: '', alt: 2500 };
   $('route-text').value = r.text;
+  $('route-alt').max = (area.transitionAltitude || 5000) - 100;   // up to the area's transition altitude
   $('route-alt').value = r.alt;
   $('route-places-title').textContent = `Places I know around ${area.name}`;
   const places = [...area.places].sort((a, b) => (b.kind === 'vrp') - (a.kind === 'vrp') || a.name.localeCompare(b.name));

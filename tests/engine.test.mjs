@@ -196,10 +196,14 @@ test("the recogniser's other guesses are matched too", async () => {
 // The briefing screen puts one fact on each row, so each entry must be a labelled one-liner. A three-sentence
 // entry is the bunched-up prose this replaced.
 test('every briefing is a list of labelled items, one fact each', () => {
-  const leeds = AREAS.find(a => a.id === 'leeds');
   const ctx = { reg: 'G-CZIA', abbr: 'G-IA', type: 'QuikR microlight', transponder: true, speedKt: 65 };
-  const own = customScenario(leeds, parseRoute('Skipton to Wetherby via Salts Mill and Eccup Reservoir at 2800 ft', leeds));
-  const all = [...SCENARIOS, own, listenScenario('leeds')];
+  // Your own route in every area: only Leeds used to be checked, and Edinburgh's and Manchester's broke the rule.
+  const own = Object.entries({
+    leeds: 'Skipton to Wetherby via Salts Mill and Eccup Reservoir at 2800 ft',
+    edinburgh: 'Dunbar to Falkirk via Musselburgh and Forth Road Bridge at 2000 ft',
+    manchester: 'Buxton to Northwich via Macclesfield and Alderley Edge at 1400 ft',
+  }).map(([id, text]) => { const area = AREAS.find(a => a.id === id); return customScenario(area, parseRoute(text, area)); });
+  const all = [...SCENARIOS, ...own, listenScenario('leeds')];
   for (const s of all) {
     const lines = s.briefing(ctx);
     assert.ok(lines.length >= 4, `${s.id}: only ${lines.length} briefing items`);

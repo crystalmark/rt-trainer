@@ -113,3 +113,34 @@ test('a changed route may start inside controlled airspace, but not finish there
   plan = planRoute(leeds, [here, place('otley')], 2800, { midFlight: true });
   assert.match(plan.errors[0], /finish inside Leeds Bradford CTR/);
 });
+
+// What a route is read as, said. "&", "/" and "+" between places used to drop one of them without a word, and a place's
+// chip put a different place in the route when a VRP was heard by its name.
+test('two places joined any way are two places, and a place is found by its own name', () => {
+  const leeds = AREAS.find(a => a.id === 'leeds');
+  for (const join of ['&', '/', '+', 'and']) {
+    assert.deepEqual(parseRoute(`Skipton to Wetherby via Salts Mill ${join} Eccup at 2800 ft`, leeds).points.map(p => p.name),
+      ['Skipton', 'Salts Mill', 'Eccup Reservoir', 'Wetherby'], join);
+  }
+  assert.match(parseRoute('Harrogate to Skipton-Otley', leeds).notes.join(' '), /leaving out “otley”/);
+  assert.match(parseRoute('Skipton to Wetherby via Leeds Bradford', leeds).notes.join(' '), /Read “Leeds Bradford” as Bradford/);
+  for (const area of AREAS) for (const p of area.places) assert.equal(parseRoute(p.name, area).points[0], p, `${area.id}: “${p.name}”`);
+});
+
+test('the transition altitude is the area’s own', () => {
+  const edinburgh = AREAS.find(a => a.id === 'edinburgh'), leeds = AREAS.find(a => a.id === 'leeds');
+  const ta = (area, text, alt) => planRoute(area, parseRoute(text, area).points, alt).errors.filter(e => /transition altitude/.test(e));
+  assert.deepEqual(ta(edinburgh, 'Dunbar to Falkirk', 5500), [], 'Edinburgh’s is 6000 ft');
+  assert.match(ta(leeds, 'Skipton to Wetherby', 5500)[0] || '', /1000 to 4900 ft/);
+});
+
+// Neighbouring volumes whose arcs don't quite share an end leave a sliver between them: counted as a gap, it said a
+// route left controlled airspace and came back when it never left.
+test('touching volumes are not leaving and re-entering', () => {
+  for (const [id, text] of [['leeds', 'Pontefract to Pateley Bridge'], ['edinburgh', 'Falkirk to Tranent']]) {
+    const area = AREAS.find(a => a.id === id);
+    const plan = planRoute(area, parseRoute(text, area).points, 2500);
+    assert.ok(plan.cas.length > 1, `${text} crosses two volumes`);
+    assert.ok(!plan.warnings.some(w => /re-enters/.test(w)), `${text}: ${plan.warnings.join(' ')}`);
+  }
+});

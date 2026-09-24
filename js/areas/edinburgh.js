@@ -108,6 +108,7 @@ export default {
   freq: '121.205',
   zone: 'the Edinburgh control zone',
   qnhName: 'Edinburgh QNH',
+  transitionAltitude: 6000,           // the Scottish TMA's: route plans go up to 5900 ft here (5000 elsewhere)
   squawks: '62',                      // the first two digits of the codes the unit hands out (illustrative)
   listeningSquawk: '0440',
   origin: ARP,

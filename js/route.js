@@ -4,7 +4,8 @@
 import { dist, bearing, compass, inside, edgeDistance, describe } from './geo.js';
 
 const key = s => String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
-const SEP = /(\bfrom\b|\bto\b|\bvia\b|\bthen\b|\band\b|,|;|\n|→|->|>|\s[-–—]\s)/i;
+// "&", "/" and "+" join two places as "and" does. Not a bare hyphen: that is inside names (Chapel-en-le-Frith).
+const SEP = /(\bfrom\b|\bto\b|\bvia\b|\bthen\b|\band\b|&|\/|\+|,|;|\n|→|->|>|\s[-–—]\s)/i;
 const FILLER = /\b(the|vrp|overhead|over|abeam|near|town|village|reservoir|railway station|roundabout)\b/g;
 const ALTITUDE = /\b(?:at\s+|alt(?:itude)?\s+)?(\d{1,2}[,.]?\d{3}|\d{3,4})\s*(?:ft|feet|foot|')(?=\W|$)|\b(?:at|alt(?:itude)?)\s+(\d{1,2}[,.]?\d{3}|\d{3,4})\b/i;
 
@@ -18,17 +19,29 @@ function levenshtein(a, b) {
 }
 
 const namesOf = p => [p.name, p.official, ...(p.hear || [])].filter(Boolean).map(key);
+const ownNames = p => [p.name, p.official].filter(Boolean).map(key);
 
-/** Find the place a piece of text names: exact, then contained, then a close spelling. */
+/**
+ * Find the place a piece of text names: exact, then contained, then a close spelling. Exact is a place's own name before
+ * anything it is heard as: the Forth Road Bridge VRP is heard as "forth bridge", and that took the Forth Bridge's own
+ * chip. Contained says what else the text named (`dropped`) when that is another place.
+ */
 export function findPlace(text, places) {
   const k = key(text), bare = key(k.replace(FILLER, ' '));
   if (!k) return null;
-  for (const p of places) if (namesOf(p).some(n => n === k || n === bare)) return { place: p };
+  for (const names of [ownNames, namesOf]) for (const p of places) if (names(p).some(n => n === k || n === bare)) return { place: p };
   let best = null;
   for (const p of places) for (const n of namesOf(p)) {
-    if (n.length > 3 && ` ${k} `.includes(` ${n} `) && (!best || n.length > best.len)) best = { place: p, len: n.length };
+    if (n.length > 3 && ` ${k} `.includes(` ${n} `) && (!best || n.length > best.len)) best = { place: p, len: n.length, name: n };
   }
-  if (best) return { place: best.place };
+  if (best) {
+    // Words left over are said: "Leeds Bradford" is Bradford, the city, not the airport, and it used to be read so
+    // without a word. Left over and naming another place, it was two places.
+    const rest = key(` ${k} `.replace(` ${best.name} `, ' ').replace(FILLER, ' '));
+    const other = rest ? findPlace(rest, places) : null;
+    const dropped = other?.place && !other.readAs && other.place !== best.place ? rest : null;
+    return { place: best.place, readAs: !!rest && !dropped, dropped };
+  }
   const scored = places.map(p => ({ place: p, d: Math.min(...namesOf(p).map(n => levenshtein(bare || k, n))) })).sort((a, b) => a.d - b.d);
   const target = bare || k, allow = target.length <= 5 ? 1 : target.length <= 10 ? 2 : 3;
   if (scored[0] && scored[0].d <= allow && (!scored[1] || scored[1].d > scored[0].d)) return { place: scored[0].place, readAs: true };
@@ -62,6 +75,8 @@ export function parseRoute(text, area) {
     if (!f) continue;
     if (f.unknown) { unknown.push({ text: f.unknown, suggestions: f.suggestions }); continue; }
     if (f.readAs && key(it.text) !== key(f.place.name)) notes.push(`Read “${it.text}” as ${f.place.name}.`);
+    // Two places with nothing between them: one of them used to vanish from the route without a word.
+    if (f.dropped) notes.push(`Read “${it.text}” as ${f.place.name}, leaving out “${f.dropped}”: put “and” or a comma between two places.`);
     if (points[points.length - 1] !== f.place) points.push(f.place);
   }
   return { points, altitude, notes, unknown };
@@ -79,7 +94,8 @@ export const routeText = (points, altitude) => points.map(p => p.name).join(' �
 export function planRoute(area, places, altitude, { midFlight = false } = {}) {
   const errors = [], warnings = [];
   if (places.length < 2) errors.push('Name at least two places: where you start and where you finish.');
-  if (!(altitude >= 1000 && altitude < 5000)) errors.push('Plan an altitude from 1000 to 4900 ft (the transition altitude is 5000 ft).');
+  const ta = area.transitionAltitude || 5000;          // 6000 ft under the Scottish TMA
+  if (!(altitude >= 1000 && altitude < ta)) errors.push(`Plan an altitude from 1000 to ${ta - 100} ft (the transition altitude is ${ta} ft).`);
   let run = 0;
   const points = places.map((p, i) => { if (i) run += dist(places[i - 1], p); return { place: p, s: run }; });
   const total = run;
@@ -132,7 +148,9 @@ export function planRoute(area, places, altitude, { midFlight = false } = {}) {
   if (area.airport && points.some((_, i) => i && segmentPasses(points[i - 1].place, points[i].place, { x: 0, y: 0 }, 1))) {
     warnings.push(`The route passes within a mile of ${area.airport.name}: expect ATC to route you round the runway, or via the overhead.`);
   }
-  if (plan.cas.length > 1) warnings.push('The route leaves and re-enters controlled airspace: you will be cleared through it in one go.');
+  // Volumes that meet leave a sliver between them where their arcs don't quite share an end: counted as a gap, it had
+  // routes that never leave controlled airspace leaving and re-entering it.
+  if (plan.cas.some((c, i) => i && c.s0 - plan.cas[i - 1].s1 >= 0.1)) warnings.push('The route leaves and re-enters controlled airspace: you will be cleared through it in one go.');
   // Class A takes IFR only: there is no VFR transit to ask for, so offering one would teach the wrong lesson.
   const classA = plan.cas.find(c => c.volume.cls === 'A');
   if (classA) errors.push(`${classA.volume.name} is Class A: VFR is not allowed in it at all, so there is no transit to ask for. ` +

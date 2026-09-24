@@ -133,7 +133,8 @@ export default {
   facts: [
     'Manchester Radar 118.580 is the frequency for a VFR transit: there is no "Manchester Approach" — the radar service is Radar, or Director. Manchester Arrival Information (ATIS) 128.180.',
     'The CTR is Class D, surface to 3500 ft. The CTAs around it come down to 3000, 2500, 2000 or 1500 ft depending on which side you are.',
-    'The Low Level Route closed on 20 February 2025. In its place the North West Transit Corridor (EGR323) is Class G, surface to 1500 ft: below 1500 ft you need no clearance and need call nobody, at 140 kt or less, in 5 km visibility, on the Manchester or Liverpool QNH.',
+    'The Low Level Route closed on 20 February 2025. In its place the North West Transit Corridor (EGR323) is Class G, surface to 1500 ft.',
+    'In the corridor, below 1500 ft, you need no clearance and need call nobody: at 140 kt or less, in 5 km visibility, on the Manchester or Liverpool QNH.',
     'Above 3500 ft over the zone is the Manchester TMA, Class A: no VFR at all, at any height.',
     'Staying outside the zone: listening squawk 7366 (7367 student solo), monitoring 118.580.',
     'Transition altitude is 5000 ft. Inbound to Barton, do not assume anyone has coordinated your entry to the Barton ATZ.',
