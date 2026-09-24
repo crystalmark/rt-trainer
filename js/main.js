@@ -164,8 +164,10 @@ function bindRoute() {
 function bindSetup() {
   $('aircraft').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (!b) return; state.profileId = b.dataset.p; store.set('profileId', state.profileId); renderSetup(); });
   $('scenarios').addEventListener('click', e => { const b = e.target.closest('[data-s]'); if (!b) return; state.scenarioId = b.dataset.s; store.set('scenarioId', state.scenarioId); renderSetup(); });
-  // the old on/off static switch becomes a level
-  if (store.get('o-noise', null) === null) store.set('o-noise', store.get('o-hiss', true) ? 'normal' : 'off');
+  // The old on/off static switch becomes a level, for anyone who ever set it. It was only stored once changed, and
+  // "never set" was taken as on: every new install started at Normal, not the Quiet the page is meant to start at.
+  const hiss = store.get('o-hiss', null);
+  if (store.get('o-noise', null) === null && hiss !== null) store.set('o-noise', hiss ? 'normal' : 'off');
   const opts = { 'o-density': 'normal', 'o-scale': '1', 'o-delay': 'normal', 'o-refuse': '0', 'o-noise': 'low', 'o-key': '' };
   for (const [id, d] of Object.entries(opts)) { $(id).value = store.get(id, d); $(id).addEventListener('change', () => store.set(id, $(id).value)); }
   const checks = { 'o-text': false, 'o-mine': true, 'o-hot': true };
