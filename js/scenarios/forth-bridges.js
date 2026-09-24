@@ -65,6 +65,7 @@ export const forthBridges = {
     const westerly = +num > 18, hand = westerly ? 'left-hand' : 'right-hand';
     const wind = westerly ? 'surface wind 260 degrees 10 knots' : 'surface wind 080 degrees 8 knots';
     const qnh = s.pick([1014, 1016, 1019, 1022, 1027]), qfe = qnh - 4;   // 115 ft is about 4 hPa
+    ctx.qnh = qnh;                                        // Edinburgh's too, so the traffic says the same
     const oct = () => String(s.pick([0, 1, 2, 3, 4, 5, 6, 7]));
     const squawk = area.squawks + oct() + oct();
     const side = westerly ? 'left' : 'right';

@@ -17,6 +17,7 @@ export default {
   ],
   async run(s) {
     const { ctx } = s;
+    ctx.qnh = 1012;                                       // Edinburgh's, which the traffic uses too
     await s.leg('East of Haddington', 1.5, { cue: 'Call Edinburgh Approach when there is a gap.' });
     const det = details(ctx, { from: 'east fortune', to: 'perth', position: ['haddington', 'miles'], altitude: 1800,
       request: ['transit', 'zone transit', 'musselburgh', 'kirkcaldy'] });
@@ -61,7 +62,7 @@ export default {
     } else s.note('You crossed 7 nm of the Forth without asking for more height: consider glide range over water.');
     await s.leg('Crossing the Forth', 4);
     if (s.chance(0.6)) await s.atc('{CALL}, traffic is a helicopter, 3 miles west of you, southbound, altitude 1500 feet', { readback: [TRAFFIC_ACK()], model: 'Traffic in sight, {CALL}' });
-    if (s.chance(0.3)) await s.atc('{CALL}, Edinburgh QNH 1011', { readback: [QNH(1011)], model: 'QNH 1011, {CALL}' });
+    if (s.chance(0.3)) { ctx.qnh = 1011; await s.atc('{CALL}, Edinburgh QNH 1011', { readback: [QNH(1011)], model: 'QNH 1011, {CALL}' }); }
     await s.leg('Kirkcaldy Harbour', 4, { early: true });
     await s.expect({ id: 'kirkcaldy', cue: 'Over Kirkcaldy Harbour.', nudge: '{CALL}, report your position',
       items: [P('Kirkcaldy Harbour', ['kirkcaldy'])], model: '{CALL}, Kirkcaldy Harbour' });

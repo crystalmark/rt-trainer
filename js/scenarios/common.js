@@ -107,43 +107,45 @@ export function leedsTraffic(s, { similar }) {
 }
 
 export function edinburghTraffic(s, { similar }) {
+  const qnh = s.ctx.qnh || 1012;              // the flight's own, so the frequency never carries two
   const air = pick(s, ['Loganair 6 Hotel', 'Easy 12 Tango', 'Ryanair 8 Echo Kilo', 'KLM 17 Mike', 'Speedbird 1488', 'Jet2 61']);
   const ga = pick(s, GA); const gab = abbr(ga);
   const options = [
     [[air, `Edinburgh Approach, ${air}, descending flight level 80, information Kilo`],
-     ['atc', `${air}, Edinburgh Approach, descend to altitude 4000 feet, QNH 1012, vectors ILS runway 24`],
-     [air, `Descend altitude 4000 feet, QNH 1012, vectors ILS 24, ${air}`]],
+     ['atc', `${air}, Edinburgh Approach, descend to altitude 4000 feet, QNH ${qnh}, vectors ILS runway 24`],
+     [air, `Descend altitude 4000 feet, QNH ${qnh}, vectors ILS 24, ${air}`]],
     [['atc', `${air}, turn right heading 270, descend to altitude 3000 feet`], [air, `Right heading 270, descend altitude 3000 feet, ${air}`]],
     [['atc', `${air}, contact Edinburgh Tower 118.705`], [air, `Tower 118.705, ${air}`]],
     [[ga, `Edinburgh Approach, ${ga}, request zone transit`], ['atc', `${ga}, Edinburgh Approach, standby`]],
     [['atc', `${gab}, cleared to leave controlled airspace via Cobbinshaw Reservoir, not above altitude 2000 feet`], [ga, `Cleared to leave via Cobbinshaw, not above altitude 2000 feet, ${gab}`]],
     [['atc', `${similar}, report Kelty`, { similar }], [similar, `Wilco, ${similar}`]],
     [['Rescue 199', 'Edinburgh Approach, Rescue 199, 5 miles south of Dalkeith, altitude 1500 feet, request transit to the Forth Road Bridge'],
-     ['atc', 'Rescue 199, cleared to enter the Edinburgh control zone, route direct Forth Road Bridge, not above altitude 1500 feet, QNH 1012'],
-     ['Rescue 199', 'Cleared direct Forth Road Bridge, not above altitude 1500 feet, QNH 1012, Rescue 199']],
+     ['atc', `Rescue 199, cleared to enter the Edinburgh control zone, route direct Forth Road Bridge, not above altitude 1500 feet, QNH ${qnh}`],
+     ['Rescue 199', `Cleared direct Forth Road Bridge, not above altitude 1500 feet, QNH ${qnh}, Rescue 199`]],
   ];
   return pick(s, options);
 }
 
 export function manchesterTraffic(s, { similar }) {
+  const qnh = s.ctx.qnh || 1013;              // the flight's own, so the frequency never carries two
   const air = pick(s, ['Channex 47', 'Easy 64 Kilo', 'Ryanair 2 Kilo Papa', 'Tomjet 5 Charlie', 'Emirates 17', 'Shamrock 62']);
   const ga = pick(s, GA); const gab = abbr(ga);
   const hdg = pick(s, ['230', '180', '050', '310']);
   const options = [
     [[air, `Manchester Radar, ${air}, descending flight level 80, information Bravo`],
-     ['atc', `${air}, Manchester Radar, descend to altitude 4000 feet, QNH 1013, vectors ILS runway 23 Right`],
-     [air, `Descend altitude 4000 feet, QNH 1013, vectors ILS 23 Right, ${air}`]],
+     ['atc', `${air}, Manchester Radar, descend to altitude 4000 feet, QNH ${qnh}, vectors ILS runway 23 Right`],
+     [air, `Descend altitude 4000 feet, QNH ${qnh}, vectors ILS 23 Right, ${air}`]],
     [['atc', `${air}, turn left heading ${hdg}, reduce speed 180 knots`], [air, `Left heading ${hdg}, speed 180 knots, ${air}`]],
     [['atc', `${air}, contact Manchester Tower 118.630`], [air, `Tower 118.630, ${air}`]],
     [[ga, `Manchester Radar, ${ga}, request Basic Service`], ['atc', `${ga}, Manchester Radar, pass your message`],
-     [ga, `${ga}, ${pick(s, GA_TYPES)}, Barton to Sleap, overhead Rostherne, altitude 1400 feet, QNH 1013, VFR, routing the transit corridor`],
+     [ga, `${ga}, ${pick(s, GA_TYPES)}, Barton to Sleap, overhead Rostherne, altitude 1400 feet, QNH ${qnh}, VFR, routing the transit corridor`],
      ['atc', `${gab}, Basic Service, squawk 4622, remain outside controlled airspace`], [ga, `Basic Service, squawk 4622, remain outside controlled airspace, ${gab}`]],
     [[ga, `Manchester Radar, ${ga}, request zone transit`], ['atc', `${ga}, Manchester Radar, standby`]],
     [['atc', `${gab}, traffic is a helicopter, 2 miles south of you, westbound, altitude 1200 feet`], [ga, `Looking, ${gab}`]],
     [['atc', `${similar}, report Jodrell Bank`, { similar }], [similar, `Wilco, ${similar}`]],
     [['Police 24', 'Manchester Radar, Police 24, lifted Barton, request zone entry to operate over Stockport, not above altitude 2000 feet'],
-     ['atc', 'Police 24, cleared to enter the Manchester control zone, not above altitude 2000 feet, QNH 1013, report operating'],
-     ['Police 24', 'Cleared to enter, not above altitude 2000 feet, QNH 1013, wilco, Police 24']],
+     ['atc', `Police 24, cleared to enter the Manchester control zone, not above altitude 2000 feet, QNH ${qnh}, report operating`],
+     ['Police 24', `Cleared to enter, not above altitude 2000 feet, QNH ${qnh}, wilco, Police 24`]],
     [['atc', `${air}, radar vectors complete, cleared ILS approach runway 23 Right, report established`], [air, `Cleared ILS 23 Right, wilco, ${air}`]],
   ];
   return pick(s, options);

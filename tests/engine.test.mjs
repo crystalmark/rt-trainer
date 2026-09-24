@@ -769,3 +769,27 @@ test('pausing while a squawk is wanted does not use up the time to set it', asyn
   assert.ok(!events.some(e => e.type === 'late-action'), JSON.stringify(events.filter(e => e.type === 'late-action')));
   assert.ok(events.some(e => e.type === 'action' && e.id === 'squawk-5634'));
 });
+
+// Edinburgh's and Manchester's traffic had a QNH of their own: the pilot was given one and heard another, on the same
+// frequency from the same controller.
+test('the traffic on a frequency uses the same QNH as the pilot is given', async () => {
+  const scenario = SCENARIOS.find(s => s.id === 'forth-bridges');
+  for (const seed of [1, 2, 3, 4]) {
+    const { events, engine } = await run(scenario, PROFILES[1], seed, { settings: { trafficDensity: 'busy' } });
+    const heard = events.filter(e => e.type === 'traffic' || (e.type === 'atc' && e.traffic)).flatMap(e => [...e.text.matchAll(/QNH (\d{4})/g)].map(m => m[1]));
+    assert.ok(heard.every(q => q === String(engine.ctx.qnh)), `seed ${seed}: given ${engine.ctx.qnh}, heard ${heard.join(', ')}`);
+  }
+});
+
+// Leaving the Leeds zone, "Basic Service, squawk 7000, changing frequency" was corrected with "negative, frequency
+// change approved": the only readback of it anywhere that took "changing" as wrong.
+test('reading back a frequency change as "changing frequency" is fine', async () => {
+  const scenario = SCENARIOS.find(s => s.id === 'leeds-transit');
+  const { events } = await run(scenario, PROFILES[1], 5, { settings: { trafficDensity: 'quiet', refusalBias: -1 },
+    pilot: engine => { const perfect = perfectPilot(engine); return ev => {
+      if (ev.kind === 'awaiting' && /frequency change approved/.test(ev.atcText || '')) { sendWhenClear(engine, 'Basic Service, squawk 7000, changing frequency, golf india alpha'); return; }
+      perfect(ev);
+    }; } });
+  assert.ok(events.some(e => e.type === 'readback' && /changing frequency/.test(e.text)), 'the readback was made');
+  assert.ok(!events.some(e => e.type === 'correction'), JSON.stringify(events.filter(e => e.type === 'correction')));
+});

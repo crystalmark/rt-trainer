@@ -625,3 +625,20 @@ test('cleared in again, a change of route inside still waits for ATC', async () 
   assert.equal(phase, 2, 'flew back in on a new clearance');
   assert.equal(pending, true, 'and the turn waited for ATC’s approval');
 });
+
+// "Zone" is the CTR and nothing else. Refused a transit through a CTA, the pilot was told "negative zone transit" and
+// "expect zone entry", and given "routing round the zone" as the answer to copy.
+test('a transit through a CTA alone never hears "zone"', async () => {
+  const text = 'Halifax to Garforth via Chain Bar at 2800 ft';
+  assert.equal(scenarioFor(text).plan.transit.intoZone, false, 'CTA 2 to CTA 1, no CTR');
+  const said = new Set();
+  for (const refusalBias of [1, 0]) for (const seed of [1, 2, 3, 4]) {
+    const events = await fly(scenarioFor(text, seed), PROFILES[1], seed, { settings: { trafficDensity: 'quiet', refusalBias } });
+    for (const e of events) {
+      if (e.type === 'atc' && e.toPilot) said.add(e.text);
+      if (e.model) said.add(e.model);
+    }
+  }
+  assert.ok([...said].some(t => /negative transit|expect entry into controlled airspace/.test(t)), 'the refusal and the delay both came up');
+  assert.deepEqual([...said].filter(t => /\bzone\b/i.test(t)), []);
+});

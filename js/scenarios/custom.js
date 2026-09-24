@@ -216,9 +216,9 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
       await s.expect({ id: 'approaching', cue: `Approaching ${A.name}, still outside controlled airspace.`, nudge: '{CALL}, report your position',
         items: [named(A)], model: `{CALL}, approaching ${A.name}, altitude ${altitude} feet` });
     }
-    if (s.chance((ctx.transponder ? 0.15 : 0.35) + s.settings.refusalBias)) return refusal(s);
+    if (s.chance((ctx.transponder ? 0.15 : 0.35) + s.settings.refusalBias)) return refusal(s, T);
     if (s.chance(0.3)) {
-      await s.atc('{CALL}, expect zone entry in 5 minutes due inbound traffic, remain outside controlled airspace', {
+      await s.atc(`{CALL}, expect ${T.intoZone ? 'zone entry' : 'entry into controlled airspace'} in 5 minutes due inbound traffic, remain outside controlled airspace`, {
         readback: [ROS()], model: 'Remain outside controlled airspace, {CALL}' });
       await s.leg('Holding outside controlled airspace', ctx.speedKt * 4 / 60, { cue: 'Orbit outside controlled airspace and listen out.' });
     }
@@ -307,8 +307,11 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     return runHome(s, P0, 'Transit completed');
   }
 
-  async function refusal(s) {
-    await s.atc('{CALL}, negative zone transit due traffic, remain outside controlled airspace', {
+  // "Zone" only when it is the CTR being crossed, as everywhere else: refused a CTA transit, you were told "negative zone
+  // transit", and taught to answer "routing round the zone".
+  async function refusal(s, T) {
+    const round = T.intoZone ? 'the zone' : 'controlled airspace';
+    await s.atc(`{CALL}, negative ${T.intoZone ? 'zone transit' : 'transit'} due traffic, remain outside controlled airspace`, {
       readback: [P('negative transit', ['negative'], { soft: true }), ROS()], model: 'Negative transit, remain outside controlled airspace, {CALL}' });
     await s.atc('{CALL}, confirm you will not enter controlled airspace', {
       readback: [
@@ -317,13 +320,13 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
           why: '“Zone” is the CTR only. The controller asked about controlled airspace, which includes the CTAs: answer in the same words.' }),
         P('new routing', ['routing', 'route', 'round', 'around', 'remaining outside', 'north', 'south', 'east', 'west', 'via'], { soft: true, why: 'Tell them your plan B so they know where you’re going.' }),
       ],
-      model: 'Affirm, will not enter controlled airspace, routing round the zone, {CALL}' });
+      model: `Affirm, will not enter controlled airspace, routing round ${round}, {CALL}` });
     st.refused = true;
     await s.atc('{CALL}, roger, Basic Service continues, report changing frequency', { readback: [BASIC(), WILCO()], model: 'Basic Service, wilco, {CALL}' });
     s.hold(s.position().s, 'Holding outside controlled airspace');
     // Told to report changing frequency: asking to on the way round is that call. It went to Claude, or drew
     // "unable, continue as cleared" and then a service terminated because "you never asked".
-    await s.leg('Routing round the zone', 5, { cue: 'Plan B: pick a way round on the map (tap a place, then Direct to or Divert), remaining outside controlled airspace.', early: true });
+    await s.leg(`Routing round ${round}`, 5, { cue: 'Plan B: pick a way round on the map (tap a place, then Direct to or Divert), remaining outside controlled airspace.', early: true });
     await leaveFrequency(s, 'Transit refused: routed round');
   }
 
@@ -406,7 +409,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     if (T) s.hold(Math.max(s.position().s, T.sIn - 1), 'Holding for your clearance');
     await s.expect({ id: 'reroute', cue: `Tell ${area.unit} about your change of plan.`, nudge: '{CALL}, say intentions',
       items: [named(target, null, { ask: '{CALL}, say your routing' })],
-      model: T ? `{CALL}, change of plan, request zone transit, route direct ${target.name}`
+      model: T ? `{CALL}, change of plan, request ${transitWords(T)}, route direct ${target.name}`
         : `{CALL}, change of plan, routing direct ${target.name}, remaining outside controlled airspace` });
     if (!st.service) await service(s, plan);
     if (T) {

@@ -107,7 +107,7 @@ export default {
     await s.expect({ id: 'leaving', cue: 'Crossing the CTR boundary.', nudge: '{CALL}, report your position',
       items: [P('leaving controlled airspace', ['leaving controlled airspace', 'leaving the zone', 'clear of controlled airspace', 'leaving', 'clear of the zone'])], model: '{CALL}, leaving controlled airspace' });
     await s.atc(ctx.transponder ? '{CALL}, Basic Service, squawk 7000, frequency change approved' : '{CALL}, Basic Service, frequency change approved', {
-      readback: [BASIC(), ...(ctx.transponder ? [SQUAWK('7000')] : []), P('frequency change approved', ['frequency change', 'free call', 'freecall'], { fix: 'frequency change approved' })],
+      readback: [BASIC(), ...(ctx.transponder ? [SQUAWK('7000')] : []), P('frequency change approved', ['frequency change', 'changing', 'free call', 'freecall'], { soft: true })],
       model: (ctx.transponder ? 'Basic Service, squawk 7000' : 'Basic Service') + ', frequency change approved, {CALL}' });
     await useSquawk(s, '7000', { chase: false });
     s.end('Transit completed');
