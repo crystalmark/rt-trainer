@@ -74,3 +74,38 @@ test('a reply that breaks the shape keeps only what the engine can use', async (
   assert.equal(out.end, false);
   assert.equal(out.assessment, null);
 });
+
+// Off script, Claude saw only the last 30 lines of the log, and the conversation it was passed went unread. With other
+// traffic still talking, the pilot's request and the clearance given for it were gone within minutes, and Claude
+// answered with no memory of what it had told the aircraft to do.
+test('the off-script controller sees the whole conversation, however busy the frequency', async () => {
+  const sent = reply({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{"transmissions": ["G-IA, roger"]}' }] });
+  const traffic = n => Array.from({ length: n }, (_, i) => (i % 2
+    ? { type: 'traffic', speaker: 'Channex 47', text: `Heading ${i}, Channex 47`, traffic: true }
+    : { type: 'atc', speaker: 'atc', text: `Channex 47, turn left heading ${i}`, traffic: true }));
+  const request = 'G-IA, request return to East Fortune due weather';
+  const events = [
+    { type: 'atc', speaker: 'atc', text: 'G-CZIA, cleared to enter the zone via Musselburgh, not above altitude 2000 feet', toPilot: true },
+    { type: 'pilot', text: 'Cleared to enter via Musselburgh, not above 2000 feet, G-CZIA' },
+    ...traffic(30),
+    { type: 'pilot', text: request },
+    { type: 'offscript', text: request },
+    ...traffic(60),
+  ];
+  const history = [
+    { role: 'pilot', text: request },
+    { role: 'atc', text: 'G-IA, leave controlled airspace eastbound, report Haddington Hill, squawk 5271' },
+    ...Array.from({ length: 10 }, (_, i) => [{ role: 'pilot', text: `G-IA, ${i + 2} miles west of Haddington Hill` }, { role: 'atc', text: 'G-IA, roger' }]).flat(),
+    { role: 'pilot', text: 'G-IA, overhead Haddington Hill' },
+  ];
+  await new Claude({ apiKey: 'k' }).atc({ scenario: { title: 'Edinburgh zone transit' }, ctx, events, history, pilot: 'G-IA, overhead Haddington Hill' });
+  const prompt = sent[0].messages[0].content;
+  assert.match(prompt, /report Haddington Hill, squawk 5271/, 'its own clearance');
+  assert.match(prompt, /cleared to enter the zone via Musselburgh/, 'what the pilot was cleared to do before');
+  assert.equal(prompt.split(request).length - 1, 1, 'the call that left the script, once');
+  assert.equal(prompt.split('overhead Haddington Hill').length - 1, 1, 'the call being answered, once');
+  const first = prompt.indexOf('G-IA, 2 miles west'), last = prompt.indexOf('G-IA, 11 miles west');
+  assert.ok(first > 0 && first < last, 'the conversation, all of it and in order');
+  const others = prompt.split('\n').filter(l => /Channex 47/.test(l)).length;
+  assert.ok(others <= 11, `${others} lines of other traffic`);
+});

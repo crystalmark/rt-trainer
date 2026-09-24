@@ -103,10 +103,10 @@ test('Missed readback: ATC repeats, then asks how do you read', async () => {
 test('Going off script hands the frequency to Claude', async () => {
   const scenario = SCENARIOS.find(s => s.id === 'edinburgh-transit');
   const clock = fakeClock(4000); const radio = fakeRadio(clock);
-  const calls = [];
-  const claude = { atc: async ({ pilot }) => { calls.push(pilot);
+  const calls = [], seen = [];
+  const claude = { atc: async ({ pilot, history }) => { calls.push(pilot); seen.push(history.map(h => `${h.role}: ${h.text}`));
     return calls.length === 1
-      ? { transmissions: ['G-IA, roger, leave controlled airspace eastbound, report established en route to East Fortune'], assessment: 'Clear request.' }
+      ? { transmissions: ['{CALL}, roger, leave controlled airspace eastbound, report established en route to East Fortune'], assessment: 'Clear request.' }
       : { transmissions: ['G-IA, roger, frequency change approved'], end: true, summary: 'Diverted' }; } };
   let handler = () => {};
   const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(2), claude, settings: { trafficDensity: 'quiet' }, onEvent: e => handler(e) });
@@ -121,6 +121,10 @@ test('Going off script hands the frequency to Claude', async () => {
   assert.ok(events.some(e => e.type === 'offscript'));
   assert.equal(calls.length, 2);
   assert.equal(events.at(-1).summary, 'Diverted');
+  // Claude is given the conversation so far, its own part as it went out on the radio.
+  assert.deepEqual(seen[1], ['pilot: G-IA, request return to East Fortune due weather',
+    'atc: G-IA, roger, leave controlled airspace eastbound, report established en route to East Fortune',
+    'pilot: Leave controlled airspace eastbound, wilco, G-IA']);
 });
 
 test('listen out: the frequency fills with traffic, and nothing is expected of you', async () => {

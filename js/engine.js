@@ -819,9 +819,9 @@ export class Engine {
       }
       this.log('free-assessment', { text: tx.text, alts: tx.alternatives || null, assessment: resp.assessment || null });
       for (const t of resp.transmissions || []) {
-        await this.withChannel(async () => { await this.transmit('atc', t, { toPilot: true, claude: true }); });
-        this.freeHistory.push({ role: 'atc', text: t });
-        this.lastToPilot = t; this.lastToPilotAt = this.now();
+        const { display } = await this.withChannel(() => this.transmit('atc', t, { toPilot: true, claude: true }));
+        this.freeHistory.push({ role: 'atc', text: display });          // as it went out, callsign filled in
+        this.lastToPilot = display; this.lastToPilotAt = this.now();
       }
       if (resp.position) this.emit('position', { label: resp.position });
       if (resp.end) { this.summary = resp.summary || 'Ended off script'; break; }

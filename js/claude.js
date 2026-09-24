@@ -11,6 +11,10 @@ const API = 'https://api.anthropic.com/v1/messages';
 // with it, until the browser gave up on the socket: minutes.
 const TIMEOUTS = { atc: 15000, debrief: 90000 };
 
+// The lines of the frequency log that set the scene for the off-script controller.
+const SCENE = ['atc', 'pilot', 'traffic', 'position', 'cue', 'note'];
+const logLine = e => `[${e.type}${e.speaker && e.speaker !== 'atc' ? ' ' + e.speaker : ''}] ${e.text || e.label || ''}`;
+
 export class Claude {
   constructor({ apiKey, models = MODELS, timeouts = TIMEOUTS }) {
     this.apiKey = apiKey;
@@ -66,8 +70,20 @@ export class Claude {
     const places = scenario.places ? `Published VRPs: ${scenario.places.filter(p => p.kind === 'vrp').map(p => p.name).join(', ')}. ` +
       `Other landmarks you may use for routing and positions: ${scenario.places.filter(p => p.kind !== 'vrp').map(p => p.name).join(', ')}. ` +
       'Never call anything else a VRP, and never invent frequencies. ' : '';
-    const recent = events.filter(e => ['atc', 'pilot', 'traffic', 'position', 'cue', 'note'].includes(e.type))
-      .slice(-30).map(e => `[${e.type}${e.speaker && e.speaker !== 'atc' ? ' ' + e.speaker : ''}] ${e.text || e.label || ''}`).join('\n');
+    // The whole off-script conversation, with the frequency around it. It used to be the last 30 lines of the log, and
+    // with other traffic still talking, the pilot's request and the clearance given for it were gone within minutes:
+    // Claude answered with no memory of what it had told the aircraft to do.
+    const cut = events.findLastIndex(e => e.type === 'offscript');
+    const left = cut < 0 ? null : events[cut].text;              // the call that left the script: quoted as the dialogue's start
+    const scene = (cut < 0 ? events : events.slice(0, cut)).filter(e => SCENE.includes(e.type) && !(e.type === 'pilot' && e.text === left));
+    // The pilot's own last exchanges (what they were cleared to do) first, however busy the frequency has been since.
+    const own = e => e.type !== 'traffic' && !(e.type === 'atc' && !e.toPilot);
+    const kept = new Set([...scene.filter(own).slice(-10), ...scene.filter(e => !own(e)).slice(-5)]);
+    const before = scene.filter(e => kept.has(e)).map(logLine).join('\n');
+    const others = cut < 0 ? '' : events.slice(cut + 1)
+      .filter(e => (e.type === 'traffic' || e.type === 'atc') && !e.claude).slice(-6).map(logLine).join('\n');
+    const said = history.at(-1)?.role === 'pilot' ? history.slice(0, -1) : history;    // the last is the call to answer
+    const dialogue = said.map(h => `${h.role === 'pilot' ? 'Pilot' : ctx.unit}: ${h.text}`).join('\n');
     const system = `You are the ${ctx.unit} controller on ${ctx.freq} in a UK radiotelephony training simulator. ` +
       `Speak exactly as a real UK controller would, using CAP 413 phraseology: short, precise, no chit-chat. ` +
       `The pilot is ${ctx.reg} (abbreviated ${ctx.abbr}), a ${ctx.type}, ${ctx.transponder ? 'with a Mode S transponder' : 'with no transponder'}, flying VFR at about ${ctx.speedKt} kt. ` +
@@ -79,8 +95,16 @@ export class Claude {
       `and never break character. Use sensible invented values for pressure settings, squawks and traffic. ` +
       `Reply with ONLY a JSON object: {"transmissions": ["what you say on frequency, in order"], "assessment": "one short sentence for the debrief on the pilot's last call against CAP 413", "position": "optional short description of where the aircraft now is", "end": false, "summary": "only when end is true"}. ` +
       `Set end true only when the pilot has left your frequency or landed.`;
-    const where = nav ? `The aircraft is now ${nav.where || 'on its route'}${nav.route.length ? `, routing ${nav.route.join(', ')}` : ''}.\n\n` : '';
-    const msgs = [{ role: 'user', content: `Recent frequency log:\n${recent}\n\n${where}The pilot just transmitted: "${pilot}"\n\nRespond as ${ctx.unit}.` }];
+    const where = nav && `The aircraft is now ${nav.where || 'on its route'}${nav.route.length ? `, routing ${nav.route.join(', ')}` : ''}.`;
+    const content = [
+      before && `The frequency before the pilot left the script:\n${before}`,
+      dialogue && `Since then, between you and the pilot:\n${dialogue}`,
+      others && `Other transmissions on the frequency since:\n${others}`,
+      where,
+      `The pilot just transmitted: "${pilot}"`,
+      `Respond as ${ctx.unit}.`,
+    ].filter(Boolean).join('\n\n');
+    const msgs = [{ role: 'user', content }];
     const text = await this.call(this.models.atc, system, msgs, { maxTokens: 400, timeout: this.timeouts.atc });
     const json = text.match(/\{[\s\S]*\}/);
     if (!json) throw new Error('No JSON from Claude');
