@@ -6,7 +6,7 @@ import { PROFILES } from '../js/config.js';
 import { fakeClock, fakeRadio, seeded, perfectPilot, sendWhenClear } from './helpers.mjs';
 import { listenScenario, LISTEN_UNITS } from '../js/scenarios/listen.js';
 import { computeDebrief } from '../js/debrief.js';
-import { briefLine, P } from '../js/scenarios/common.js';
+import { briefLine, P, SQUAWK } from '../js/scenarios/common.js';
 import { AREAS } from '../js/areas/index.js';
 import { parseRoute } from '../js/route.js';
 import { customScenario } from '../js/scenarios/custom.js';
@@ -262,6 +262,111 @@ test('nobody transmits over the pilot', async () => {
   assert.equal(radio.lines.length, 1, 'and transmits as soon as the PTT comes up');
   engine.stop();
   await flight;
+});
+
+// Taking the channel waited for the PTT, but the controller's pause before answering came after that, and so did the
+// gaps in an exchange: a pilot who keyed in either was talked over.
+test('the controller waits for a pilot who keys while it is about to answer', async () => {
+  const clock = fakeClock(20);
+  const radio = fakeRadio(clock);
+  const scenario = {
+    id: 'ptt-late', title: 'PTT', unit: 'Leeds Radar', freq: '134.580',
+    briefing: () => [['Aircraft', 'G-CZIA']],
+    async run(s) { await s.atc('{CALL}, report your position'); await s.pause(600); },
+  };
+  const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(2), settings: { trafficDensity: 'quiet', atcDelay: [1.5, 1.6] } });
+  const flight = engine.start();
+  await new Promise(r => setTimeout(r, 30));      // the controller has the channel, and is 1.5 s from answering
+  engine.pilotKeyDown();
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(radio.lines.length, 0, `spoke over the pilot: ${JSON.stringify(radio.lines)}`);
+  engine.pilotTransmission('G-CZIA, overhead Ilkley');
+  await new Promise(r => setTimeout(r, 100));
+  assert.equal(radio.lines.length, 1, 'and answers once the PTT comes up');
+  engine.stop();
+  await flight;
+});
+
+test('an exchange waits for a pilot who keys between its lines', async () => {
+  const clock = fakeClock(100);
+  const radio = fakeRadio(clock);
+  let engine, keyedAt = null, n = 0;
+  const over = [];
+  const say = radio.say.bind(radio);
+  radio.say = async (speaker, display, ...rest) => {
+    if (engine.keyed) over.push(display);
+    const res = await say(speaker, display, ...rest);
+    if (/turn left heading 140/.test(display)) { engine.pilotKeyDown(); keyedAt = Date.now(); }   // into the gap
+    return res;
+  };
+  const scenario = {
+    id: 'ptt-gap', title: 'PTT', unit: 'Leeds Radar', freq: '134.580', briefing: () => [['Aircraft', 'G-CZIA']],
+    traffic: () => (n++ ? null : [['atc', 'Channex 47, turn left heading 140'], ['Channex 47', 'Left heading 140, Channex 47']]),
+    async run(s) { await s.pause(600); },
+  };
+  engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(1), settings: { trafficDensity: 'busy' } });
+  const flight = engine.start();
+  while (keyedAt === null) await new Promise(r => setTimeout(r, 5));
+  await new Promise(r => setTimeout(r, 60));      // 6 s: the reply would have come in 0.5–1.4
+  assert.deepEqual(over, [], 'nobody spoke over the pilot');
+  engine.pilotTransmission('Leeds Radar, golf charlie zulu india alpha, request basic service');
+  await new Promise(r => setTimeout(r, 100));
+  assert.ok(radio.lines.some(l => /Left heading 140/.test(l[1])), 'and the exchange carries on afterwards');
+  engine.stop();
+  const events = await flight;
+  assert.ok(events.some(e => e.type === 'stepped-in'), 'calling in the middle of it is still noticed');
+});
+
+// Keying between the lines of someone else's exchange marks the transmission as stepping in. One that came to nothing
+// (Android often hears nothing) left the mark behind, and the pilot's next call, a correct readback minutes later,
+// was answered "standby" and thrown away.
+test('an empty transmission in the middle of an exchange does not cost the next call', async () => {
+  const clock = fakeClock(400);
+  const radio = fakeRadio(clock);
+  let engine, n = 0, keyed = false;
+  const scenario = {
+    id: 'stepped', title: 'Stepped in', unit: 'Leeds Radar', freq: '134.580', briefing: () => [['Aircraft', 'G-CZIA']],
+    traffic: () => (n++ ? null : [['Channex 47', 'Leeds Radar, Channex 47, descending flight level 70'],
+      ['atc', 'Channex 47, Leeds Radar, descend altitude 4000 feet'], ['Channex 47', 'Descend 4000 feet, Channex 47']]),
+    async run(s) {
+      await s.leg('Waiting', 3);
+      await s.atc('{CS}, squawk 5634', { readback: [SQUAWK('5634')], model: 'Squawk 5634, {CS}' });
+      s.end('Done');
+    },
+  };
+  engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(1), settings: { trafficDensity: 'busy' },
+    onEvent: ev => {
+      if (!keyed && ev.kind === 'radio' && ev.speaker === 'Channex 47') {   // in the exchange, and nothing heard
+        keyed = true; engine.pilotKeyDown(); engine.pilotTransmission('', { error: 'listening, but heard no speech' });
+      }
+      if (ev.kind === 'awaiting' && ev.waitKind === 'readback') sendWhenClear(engine, 'squawk 5634, golf charlie zulu india alpha');
+    } });
+  const events = await engine.start();
+  assert.ok(events.some(e => e.type === 'empty-tx'), 'the empty transmission happened');
+  assert.ok(!events.some(e => e.type === 'stepped-in'), JSON.stringify(events.filter(e => e.type === 'stepped-in')));
+  assert.ok(!events.some(e => e.type === 'missed'), 'the readback was taken first time');
+  assert.equal(events.filter(e => e.type === 'readback').length, 1);
+  assert.equal(events.at(-1).summary, 'Done');
+});
+
+// Off script, a failure (here a reply that isn't what was asked for) escaped past finish(): no end, no debrief, and
+// End did nothing.
+test('off script, a flight that fails still ends with a debrief', async () => {
+  const scenario = SCENARIOS.find(s => s.id === 'edinburgh-transit');
+  const clock = fakeClock(4000); const radio = fakeRadio(clock);
+  const claude = { atc: async () => ({ transmissions: [{ text: 'G-IA, roger' }] }) };
+  let handler = () => {};
+  const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(2), claude, settings: { trafficDensity: 'quiet' }, onEvent: e => handler(e) });
+  const perfect = perfectPilot(engine);
+  let diverted = false;
+  handler = ev => {
+    if (!diverted && ev.kind === 'awaiting' && ev.id === 'musselburgh') { diverted = true; sendWhenClear(engine, 'G-IA, request return to East Fortune due weather'); return; }
+    if (!diverted) perfect(ev);
+  };
+  const events = await engine.start();
+  assert.ok(events.some(e => e.type === 'offscript'));
+  assert.ok(events.some(e => e.type === 'error'), 'the failure is recorded');
+  assert.equal(events.at(-1).type, 'end');
 });
 
 // The controller speaks to you and waits: that gap is yours. Traffic that had already decided to transmit used

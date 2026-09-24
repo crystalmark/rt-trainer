@@ -143,6 +143,9 @@ export class Engine {
   }
 
   async transmit(speaker, text, meta = {}) {
+    // Taking the channel waited for the PTT, but the pilot may have keyed since: in the controller's pause before
+    // answering, or between the lines of an exchange. Either way nobody talks over them.
+    await this.holdForPilot();
     const display = this.fill(text);
     this.log(speaker === 'atc' ? 'atc' : 'traffic', { speaker, text: display, ...meta });
     this.emit('radio', { speaker, text: display, meta });
@@ -157,6 +160,7 @@ export class Engine {
   pilotKeyDown() {
     this.keyed = true;
     this.keyDownAt = this.now();
+    this.steppedIn = false;              // each transmission is judged by its own key-down
     if (this.radio.busy) {
       this.blocked = { speaker: this.radio.currentSpeaker };
       this.radio.interrupt();
@@ -183,6 +187,9 @@ export class Engine {
       return;
     }
     if (!text) {
+      // Keyed in the middle of an exchange and nothing heard: no "standby", and nothing left over either. The mark
+      // used to stay, and the pilot's next call, minutes later, was answered "standby" and thrown away.
+      this.steppedIn = false;
       this.log('empty-tx', { error: meta.error || null, trace: meta.trace || null });
       this.emit('toast', { level: 'info', text: meta.error === 'no sound reached the speech recogniser'
         ? 'Nothing reached the speech recogniser. Try again: press, pause a beat, then speak.'
@@ -616,7 +623,12 @@ export class Engine {
         await part(this.api());
       } catch (e) {
         if (e instanceof Reroute) { part = api => this.scenario.resume(api, e.change); continue; }
-        if (e instanceof OffScript) await this.freeMode(e.tx);
+        if (e instanceof OffScript) {
+          // Whatever stops the flight off script (End while keyed, a reply that isn't what was asked for) must still
+          // reach finish() and the debrief, not escape past it.
+          try { await this.freeMode(e.tx); }
+          catch (err) { if (!(err instanceof Ended)) { this.log('error', { text: String(err && err.stack || err) }); console.error(err); } }
+        }
         else if (!(e instanceof Ended)) { this.log('error', { text: String(e && e.stack || e) }); console.error(e); }
       }
       break;
