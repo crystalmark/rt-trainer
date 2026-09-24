@@ -12,10 +12,12 @@ const ANDROID_WORDS = 'golf charlie zulu india alpha microlight oxenhope ilkley 
 let android = false;
 let gumDelay = 0;                                // how long getUserMedia takes to answer
 let stopLatency = 5;                             // how long a stopped recogniser takes to finish
+let said = WORDS;                                // what the desktop recogniser hears while the button is held
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const final = t => Object.assign([{ transcript: t }], { isFinal: true });
 
 class FakeRecognition {
-  constructor() { this.listeners = {}; this.aborted = false; instances.push(this); }
+  constructor() { this.listeners = {}; this.aborted = false; this.stopped = false; instances.push(this); }
   addEventListener(ev, f) { (this.listeners[ev] ||= []).push(f); }
   fire(ev) { for (const f of this.listeners[ev] || []) f({}); }
   start() {
@@ -24,7 +26,7 @@ class FakeRecognition {
     setTimeout(() => {
       if (deaf || this.aborted) return;
       this.fire('audiostart'); this.fire('soundstart'); this.fire('speechstart');
-      if (!android) { this.onresult?.({ results: [Object.assign([{ transcript: WORDS }], { isFinal: true })] }); return; }
+      if (!android) { this.onresult?.({ results: [final(said)] }); return; }
       // As on the Pixel: every result repeats the whole transmission so far, one word longer each time, and the
       // last words are still provisional when the button is let go.
       const words = ANDROID_WORDS.split(' '), results = [];
@@ -35,7 +37,7 @@ class FakeRecognition {
       this.onresult?.({ results: [...results, Object.assign([{ transcript: ANDROID_WORDS }], { isFinal: false })] });
     }, 5);
   }
-  stop() { setTimeout(() => this.onend?.(), stopLatency); }
+  stop() { this.stopped = true; setTimeout(() => this.onend?.(), stopLatency); }
   abort() { this.aborted = true; setTimeout(() => this.onend?.(), 1); }
 }
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {
@@ -184,6 +186,28 @@ test('Android sends the whole transmission again with each word, and it is heard
   android = false;
   assert.equal(got[0].text, ANDROID_WORDS, 'once, in full, with the provisional tail');
   ptt.destroy();
+});
+
+// "…golf India alpha": the last word is often still on its way to the recogniser when the thumb comes up. Stopping it
+// there and then turned the alpha into "alph", "Elsa" or "rather", and the readback lost its callsign.
+test('it goes on listening for a moment after you let go, so the last word is heard', async () => {
+  let released = 0;
+  const { ptt, got } = make({ exclusive: true, onRelease: () => released++ });
+  await ptt.init();
+  try {                                          // a failure must not leave the meter running, or the run never ends
+    said = 'report leaving golf india';
+    ptt.down(); await sleep(250);
+    said = WORDS;
+    const rec = instances.at(-1);
+    const letGo = ptt.up();
+    assert.equal(released, 1, 'off air the moment you let go');
+    await sleep(100);
+    assert.equal(rec.stopped, false, 'but still listening');
+    rec.onresult({ results: [final('report leaving golf india'), final('alpha')] });
+    await letGo;
+    assert.equal(rec.stopped, true);
+    assert.equal(got[0].text, 'report leaving golf india alpha');
+  } finally { said = WORDS; ptt.destroy(); }
 });
 
 test('carrying on from the last result is told apart from saying the next thing', () => {

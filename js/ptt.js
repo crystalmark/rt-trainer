@@ -1,5 +1,5 @@
 // Push-to-talk: hold the on-screen button (or the space bar) to transmit.
-// Speech recognition only runs while the button is held, like a real transmitter.
+// Speech recognition runs while the button is held, like a real transmitter, and for a moment after: see TAIL_MS.
 // A separate level meter watches the microphone: talking for more than ~1.2 s without the
 // button pressed is reported as "not transmitted".
 //
@@ -16,6 +16,11 @@
 const ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
 const EVENTS = ['audiostart', 'soundstart', 'speechstart', 'speechend', 'soundend', 'audioend', 'nomatch'];
 const SOUND = ['soundstart', 'speechstart', 'result'];
+// The last word is often still on its way to the recogniser when the thumb comes up, and stopping it there and then
+// cut it short: the "alpha" ending a readback came back as "alph", "Alta", "Elsa", "oven", "rather" or nothing, and
+// the callsign was lost. So it goes on listening this long after you let go. You are off air from the release all
+// the same, and nothing else can transmit until your words are in.
+const TAIL_MS = 400;
 
 // Chrome on a desktop sends each finished phrase once. Chrome on Android sends the whole transmission again each
 // time it adds a word — "light", "light Oxenhope", "light Oxenhope Ilkley" — and joining those repeated it all,
@@ -172,6 +177,8 @@ export class PushToTalk {
     const p = this.press;
     p.heldMs = Math.round(performance.now() - p.keyAt);
     this.onRelease?.();
+    // A second press meanwhile hands this one over at once, and End aborts it: either way the stop below is harmless.
+    if (p.trace.includes('start') && !p.trace.includes('end')) await new Promise(r => setTimeout(r, TAIL_MS));
     try { p.rec.stop(); } catch { /* not running */ }
     if (p.trace.includes('start') && !p.trace.includes('end')) await Promise.race([p.done, new Promise(r => setTimeout(r, 1500))]);
     this.deliver(p);
