@@ -10,8 +10,16 @@ const port = Number(process.argv[2]) || 8080;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png' };
 
+// This machine's own names only: a web page that points a name of its own at 127.0.0.1 (DNS rebinding) is turned away,
+// so it can't read what is served here.
+const HOSTS = new Set([`localhost:${port}`, `127.0.0.1:${port}`]);
+
 createServer(async (req, res) => {
-  const path = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  if (!HOSTS.has(req.headers.host)) { res.writeHead(403).end(); return; }
+  let path;
+  try { path = decodeURIComponent(new URL(req.url, 'http://localhost').pathname); }
+  catch { res.writeHead(400).end(); return; }             // "/%" used to throw, and took the server down with it
+  if (path.split('/').some(s => s.startsWith('.'))) { res.writeHead(404).end(); return; }   // .git, .claude, an .env
   const file = join(root, path.endsWith('/') ? join(path, 'index.html') : path);
   if (!file.startsWith(root.endsWith(sep) ? root : root + sep)) { res.writeHead(403).end(); return; }
   try {
