@@ -16,7 +16,8 @@ const make = (name, attrs = {}, parent = null) => {
   if (parent) parent.appendChild(e);
   return e;
 };
-const turn = (from, to, max) => { const d = ((to - from + 540) % 360) - 180; return (from + Math.max(-max, Math.min(max, d)) + 360) % 360; };
+// Exactly onto the new track once within reach: a turn that ended a hair off it kept the map redrawing for ever.
+const turn = (from, to, max) => { const d = ((to - from + 540) % 360) - 180; return Math.abs(d) <= max ? to : (from + Math.sign(d) * max + 360) % 360; };
 
 // A spot well inside a polygon for its label: the grid point furthest from any edge (a cheap pole of inaccessibility).
 function labelSpot(poly) {
@@ -52,20 +53,21 @@ export class MovingMap {
     this.nav = null; this.navAt = 0; this.heading = 0; this.iconHeading = 0; this.fixed = null;
     this.flown = [];
     this.size = { w: 0, h: 0 };
+    this.raf = null; this.timer = null;
     this.bind();
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(root);
     this.resize();
-    this.raf = requestAnimationFrame(t => this.tick(t));
   }
 
-  destroy() { cancelAnimationFrame(this.raf); this.observer.disconnect(); }
+  destroy() { this.dead = true; cancelAnimationFrame(this.raf); clearTimeout(this.timer); this.observer.disconnect(); }
 
   /** Start a new flight: forget the flown track and follow the aircraft again. */
   reset() {
     this.nav = null; this.fixed = null; this.fitTo = null; this.seen = false; this.flown = []; this.flownLine.setAttribute('points', '');
     this.follow = true; this.centre = null; this.root.classList.remove('panned', 'orbiting');
-    this.ac.style.display = 'none';
+    this.ac.style.display = 'none'; this.drawn = null;
+    this.wake();
   }
 
   setArea(area) {
@@ -99,6 +101,7 @@ export class MovingMap {
       }, p);
     }
     this.lastPx = null;
+    this.wake();
   }
 
   /** The route event from the engine: { points: [{ name, kind, x, y }], pending }. */
@@ -115,6 +118,7 @@ export class MovingMap {
     }
     this.route = points;
     this.lastPx = null;
+    this.wake();
   }
 
   /** A nav event from the engine (once a second). */
@@ -129,6 +133,7 @@ export class MovingMap {
     for (const m of this.marks) if (m.wp) m.g.classList.toggle('next', !!nav.next && m.wp === nav.next.name);
     this.root.classList.toggle('orbiting', !!nav.orbiting);
     if (!this.seen) { this.heading = this.iconHeading = nav.track; this.seen = true; }       // first fix: face the way we're going
+    this.wake();
   }
 
   /** A look-only view of a whole route, north up (the briefing). */
@@ -143,6 +148,7 @@ export class MovingMap {
     this.fixed = { x: points[0].x, y: points[0].y, track: bearing(points[0], points[1] || points[0]) };
     this.heading = this.iconHeading = this.fixed.track;
     this.lastPx = null;
+    this.wake();
   }
 
   // ---------- drawing ----------
@@ -157,6 +163,7 @@ export class MovingMap {
     this.size = { w: r.width, h: r.height };
     this.lastPx = null;
     if (this.fitTo && r.width) this.fit(this.fitTo);
+    this.wake();                                                             // on screen again, or a new size to draw at
   }
 
   // Between nav events, carry the aircraft on along its track so the map rolls rather than jumps.
@@ -168,39 +175,69 @@ export class MovingMap {
     return { ...n, x: n.x + d * Math.sin(a), y: n.y + d * Math.cos(a) };
   }
 
+  // The map used to be redrawn on every animation frame for the life of the page, the hidden one included: on a phone
+  // held awake for a whole flight, for movement of under a pixel a second. Now a frame is asked for only when there may
+  // be something to draw, and only while the map is on screen.
+  wake() {
+    if (this.raf != null || this.dead || !this.size.w || !this.size.h) return;
+    clearTimeout(this.timer); this.timer = null;
+    this.raf = requestAnimationFrame(t => this.tick(t));
+  }
+
   tick(t) {
-    this.raf = requestAnimationFrame(tt => this.tick(tt));
+    this.raf = null;
+    // Hidden (another screen): stop, until resize() sees the map again.
+    if (!this.root.isConnected || this.root.offsetParent === null) { this.lastT = null; return; }
     const dt = Math.min(100, t - (this.lastT ?? t));
     this.lastT = t;
-    if (!this.root.isConnected || this.root.offsetParent === null) return;       // hidden: don't draw
     const pos = this.position(t);
     if (pos && this.nav) {
       this.heading = turn(this.heading, pos.track, 90 * dt / 1000);             // the map turns smoothly at a waypoint
       this.iconHeading = this.nav.orbiting ? (this.iconHeading + 30 * (this.nav.rate || 1) * dt / 1000) % 360 : this.heading;
     }
-    this.frame(pos);
+    const drew = this.frame(pos);
+    // Every frame while something moves on screen (a turn, an orbit, a drag); ten times a second while the aircraft
+    // flies straight, which at 12 nm across takes it a quarter of a pixel about twice a second; otherwise not at all
+    // (a pause sends no fixes, and position() goes no further than 1.5 s past the last), until a fix, a touch or a new
+    // route wakes the map.
+    const n = this.nav;
+    if (drew || (pos && n && (n.orbiting || this.heading !== pos.track))) this.raf = requestAnimationFrame(tt => this.tick(tt));
+    else if (n && n.rate && t - this.navAt < 1500) { this.lastT = null; this.timer = setTimeout(() => { this.timer = null; this.wake(); }, 100); }
+    else this.lastT = null;
   }
 
+  /** Draws the view for this position, writing only what has changed. Returns whether anything did. */
   frame(pos) {
     const { w, h } = this.size;
-    if (!w || !h) return;
+    if (!w || !h) return false;
     const px = this.span / w, H = h * px;
+    const q = v => Math.round(v * 4 / px) * px / 4;                          // to a quarter of a pixel
     const rot = this.northUp ? 0 : this.heading;
     const c = this.follow && pos ? pos : this.centre || pos || { x: 0, y: 0 };
     const shift = this.northUp ? 0 : H * LOOK_AHEAD;
-    this.svg.setAttribute('viewBox', `${n3(-this.span / 2)} ${n3(-H / 2 - shift)} ${n3(this.span)} ${n3(H)}`);
-    this.world.setAttribute('transform', `rotate(${n3(-rot)}) translate(${n3(-c.x)} ${n3(c.y)})`);
     this.view = { px, rot, c, shift, H };
+    const was = this.drawn || {}, cx = q(c.x), cy = q(c.y);
+    const now = {
+      box: `${n3(-this.span / 2)} ${n3(-H / 2 - shift)} ${n3(this.span)} ${n3(H)}`,
+      world: `rotate(${n3(-rot)}) translate(${n3(-cx)} ${n3(cy)})`,
+      ac: pos && `translate(${n3(q(pos.x))} ${n3(-q(pos.y))}) rotate(${n3(this.iconHeading)}) scale(${n3(px)})`,
+    };
+    this.drawn = now;
+    let drew = false;
+    if (now.box !== was.box) { this.svg.setAttribute('viewBox', now.box); drew = true; }
+    if (now.world !== was.world) { this.world.setAttribute('transform', now.world); drew = true; }
     if (px !== this.lastPx || rot !== this.lastRot) {
       for (const m of this.marks) m.g.setAttribute('transform', `translate(${n3(m.x)} ${n3(-m.y)}) rotate(${n3(rot)}) scale(${n3(px)})`);
       this.lastPx = px; this.lastRot = rot;
       this.root.classList.toggle('far', this.span > 20);
       this.scaleBar(px, w);
+      drew = true;
     }
-    if (pos) {
-      this.ac.style.display = '';
-      this.ac.setAttribute('transform', `translate(${n3(pos.x)} ${n3(-pos.y)}) rotate(${n3(this.iconHeading)}) scale(${n3(px)})`);
+    if (now.ac) {
+      if (this.ac.style.display) this.ac.style.display = '';
+      if (now.ac !== was.ac) { this.ac.setAttribute('transform', now.ac); drew = true; }
     }
+    return drew;
   }
 
   scaleBar(px, w) {
@@ -215,6 +252,7 @@ export class MovingMap {
   zoom(dir) {
     const i = SPANS.findIndex(s => s >= this.span - 1e-9);
     this.span = SPANS[Math.max(0, Math.min(SPANS.length - 1, (i < 0 ? SPANS.length - 1 : i) + dir))];
+    this.wake();
   }
 
   // Where on the map (area grid, nm) a screen point is.
@@ -242,6 +280,7 @@ export class MovingMap {
       this.follow = false;                                                   // drag the map with your finger
       this.centre = { x: start.c.x - (dx * Math.cos(a) - dy * Math.sin(a)) * px, y: start.c.y + (dx * Math.sin(a) + dy * Math.cos(a)) * px };
       this.root.classList.add('panned');
+      this.wake();
     });
     const end = e => {
       if (!start || e.pointerId !== start.id) return;
@@ -255,8 +294,8 @@ export class MovingMap {
     const on = (cls, fn) => this.root.querySelector(cls)?.addEventListener('click', fn);
     on('.map-zoom-in', () => this.zoom(-1));
     on('.map-zoom-out', () => this.zoom(1));
-    on('.map-orient', e => { this.northUp = !this.northUp; e.currentTarget.textContent = this.northUp ? 'N' : 'TRK'; e.currentTarget.setAttribute('aria-label', this.northUp ? 'North up: switch to track up' : 'Track up: switch to north up'); });
-    on('.map-centre', () => { this.follow = true; this.centre = null; this.root.classList.remove('panned'); });
+    on('.map-orient', e => { this.northUp = !this.northUp; e.currentTarget.textContent = this.northUp ? 'N' : 'TRK'; e.currentTarget.setAttribute('aria-label', this.northUp ? 'North up: switch to track up' : 'Track up: switch to north up'); this.wake(); });
+    on('.map-centre', () => { this.follow = true; this.centre = null; this.root.classList.remove('panned'); this.wake(); });
   }
 
   // The place nearest the tap (within about 24 px), measured from the aircraft for the Direct to / Divert sheet.
