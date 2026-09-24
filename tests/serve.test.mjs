@@ -27,3 +27,25 @@ test('the local server serves the app, and nothing else', async () => {
     assert.equal(await get('/', 'attacker.example'), 403, 'and only this machine’s own names are answered');
   } finally { server.kill(); }
 });
+
+// The app is tried here under the headers the live site sends (deploy/rt-headers.json), so a browser feature that the
+// Permissions-Policy leaves out fails here first. Never HSTS, which from localhost would hold every other server on this
+// machine to HTTPS.
+test('the local server sends the live site’s headers, all but HSTS', async () => {
+  const at = port + 1;
+  const server = spawn(process.execPath, [new URL('../scripts/serve.mjs', import.meta.url).pathname, String(at)]);
+  await new Promise(resolve => server.stdout.once('data', resolve));
+  try {
+    const headers = await new Promise((resolve, reject) => {
+      const req = request({ host: '127.0.0.1', port: at, path: '/', headers: { host: `localhost:${at}` } }, res => { res.resume(); resolve(res.headers); });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(headers['x-content-type-options'], 'nosniff');
+    assert.equal(headers['x-frame-options'], 'DENY');
+    assert.equal(headers['referrer-policy'], 'same-origin');
+    assert.equal(headers['content-security-policy'], "frame-ancestors 'none'");
+    assert.match(headers['permissions-policy'], /\bmicrophone=\(self\)/);
+    assert.equal(headers['strict-transport-security'], undefined);
+  } finally { server.kill(); }
+});

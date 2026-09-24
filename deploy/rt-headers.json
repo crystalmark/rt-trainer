@@ -1,0 +1,17 @@
+{
+  "Name": "rt-trainer-headers",
+  "Comment": "RT Trainer (/rt*): security headers to match Flight Log and Pollyglot",
+  "SecurityHeadersConfig": {
+    "StrictTransportSecurity": { "Override": true, "AccessControlMaxAgeSec": 31536000, "IncludeSubdomains": false, "Preload": false },
+    "ContentTypeOptions": { "Override": true },
+    "FrameOptions": { "Override": true, "FrameOption": "DENY" },
+    "ReferrerPolicy": { "Override": true, "ReferrerPolicy": "same-origin" },
+    "ContentSecurityPolicy": { "Override": true, "ContentSecurityPolicy": "frame-ancestors 'none'" }
+  },
+  "CustomHeadersConfig": {
+    "Quantity": 1,
+    "Items": [
+      { "Header": "Permissions-Policy", "Value": "camera=(), geolocation=(), microphone=(self), screen-wake-lock=(self)", "Override": true }
+    ]
+  }
+}

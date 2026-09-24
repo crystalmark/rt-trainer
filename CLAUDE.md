@@ -91,12 +91,17 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
 - Keep the engine DOM-free so it stays testable in Node.
 - crystalmark.co.uk is one browser origin shared with Flight Log and Pollyglot: service-worker caches are named and
   cleared by the `rt-trainer-` prefix, localStorage keys start `rt.`. New JS files go in `FILES` in `sw.js` (tested).
+- The page's CSP is the meta tag in `index.html`; the other security headers are CloudFront's response headers policy in
+  `deploy/rt-headers.json`, which `npm run serve` sends too (bar HSTS). A browser feature the app starts to use (camera,
+  geolocation…) has to be allowed in its Permissions-Policy: `tests/headers.test.mjs` checks. See docs/deploy.md.
 
 ## Commands
 - `npm test`: Node test runner (no install needed).
 - `npm run serve`: serve locally on http://localhost:8080, never cached; the microphone needs localhost or HTTPS.
 - `deploy/deploy.sh`: tests, then publish to https://crystalmark.co.uk/rt/ (S3 + CloudFront, not the Lightsail box;
   see docs/deploy.md). `--dryrun` to preview.
+- `deploy/cloudfront.sh`: the one-off CloudFront setup (the `/rt*` behaviour, its index function and headers policy);
+  safe to re-run, and how a change to `deploy/rt-headers.json` goes live.
 - `node scripts/vrps.mjs <EG_VRP_DS_AREA1_FULL_yyyymmdd.csv>`: refresh the VRPs from the NATS dataset
   (nats-uk.ead-it.com → Publications → Digital datasets → VRP).
 

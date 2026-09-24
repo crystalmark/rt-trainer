@@ -23,12 +23,14 @@ to the AWS account that hosts crystalmark.co.uk.
 
 ## One-off CloudFront setup
 ```sh
-deploy/cloudfront.sh            # publish the rewrite function, add the /rt* behaviour, wait for it to deploy
+deploy/cloudfront.sh            # publish the rewrite function and the headers policy, add the /rt* behaviour, wait, check
 deploy/cloudfront.sh --remove   # rollback: take the /rt* behaviour out again
 ```
 The S3 origin has no index documents, so the CloudFront Function `rt-trainer-index` (`deploy/rt-index.js`) sends `/rt`
 to `/rt/` and serves `/rt/` as `/rt/index.html`. The script tests it on CloudFront before publishing. The `/rt*`
-behaviour is a copy of the default one plus that function; nothing else on the distribution changes. Safe to re-run.
+behaviour is a copy of the default one plus that function and the response headers policy below; nothing else on the
+distribution changes. If the default behaviour ever gets a headers policy of its own, the script stops before changing
+anything, as `/rt*` would lose it. Safe to re-run: it's also how a change to the headers goes live.
 
 ## Sharing an origin with Flight Log and Pollyglot
 Every app on `https://crystalmark.co.uk` shares one browser origin, so:
@@ -40,12 +42,20 @@ Every app on `https://crystalmark.co.uk` shares one browser origin, so:
 
 ## Requirements
 - **HTTPS**: browsers only allow the microphone on secure origins.
-- No Content-Security-Policy or Permissions-Policy is set today. If a response headers policy is ever added to the
-  `/rt*` behaviour, it must allow:
-  - `connect-src https://api.anthropic.com` (Claude fallback and debrief)
-  - `style-src https://fonts.googleapis.com` and `font-src https://fonts.gstatic.com`
-  - `worker-src 'self'` (offline service worker)
-  - `microphone=(self)` and `screen-wake-lock=(self)` in Permissions-Policy.
+
+## Security headers
+- The page's Content-Security-Policy is the `<meta>` tag in `index.html`: scripts, styles and the service worker from
+  this origin, fonts from Google, and connections only to `https://api.anthropic.com` (the Claude fallback and debrief).
+- What a `<meta>` tag can't do comes from the CloudFront response headers policy `rt-trainer-headers`
+  (`deploy/rt-headers.json`, attached to `/rt*` by `deploy/cloudfront.sh`): HSTS, `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY` with `frame-ancestors 'none'`, `Referrer-Policy: same-origin`, and a Permissions-Policy that
+  allows the microphone and the screen wake lock and denies the camera and geolocation. Flight Log and Pollyglot send
+  much the same from their own servers.
+- HSTS covers the whole host, whichever path sends it, and a browser keeps the last `max-age` it was given. Flight Log
+  sends a year, so `/rt` does too: anything shorter would cut Flight Log's short. `includeSubDomains` is left off.
+- `npm run serve` sends the same headers, all but HSTS, so a feature the policy leaves out fails locally first, and
+  `tests/headers.test.mjs` fails if the app starts using one the policy doesn't allow. To change them, edit
+  `deploy/rt-headers.json` and re-run `deploy/cloudfront.sh`.
 
 ## Optional: key proxy
 To stop keeping the Anthropic key in the browser, add a tiny server-side endpoint (e.g. `/rt/api/claude`) that adds
