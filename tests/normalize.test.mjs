@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { normalize, findCallsign, tokens, speakable } from '../js/normalize.js';
 import { match, hasAny, isSayAgain } from '../js/matcher.js';
 import { AREAS } from '../js/areas/index.js';
-import { BASIC, SQUAWK, ROS, P } from '../js/scenarios/common.js';
+import { BASIC, SQUAWK, ROS, RESUME, QNH, P } from '../js/scenarios/common.js';
 import { rowsFrom, stats, append, load, clear } from '../js/heard.js';
 
 test('numbers in all the ways speech recognition returns them', () => {
@@ -307,6 +307,33 @@ test('a callsign run together into one word is still found', () => {
   assert.equal(form('gulfindia alpha reporting overhead Ilkley'), 'abbr');
   assert.equal(form('looking out gulfindia Alpha'), 'abbr');
   assert.equal(form('gulfindia hotel'), null, 'still a different aircraft');
+});
+
+// The flight of 25 September: four readbacks failed that were right, or right but for the recogniser.
+test('“resuming own navigation” is a correct readback', () => {
+  for (const t of ['golf India alther resuming own navigation to Ilkley', 'golf in the alpha resuming owner navigation to Ilkley',
+    'resume own navigation to Ilkley golf India alpha'])
+    assert.deepEqual(match(t, [RESUME()], { reg: 'G-CZIA' }, { kind: 'readback' }).hardMissing, [], t);
+});
+
+test('“radar control service” said right, and a QNH whose eight was heard as an H', () => {
+  assert.equal(normalize('radar controlled service'), 'radar control service');
+  const said = 'not above 2,000 feet 1 0 0 HQ and H report Ilkley';
+  assert.equal(normalize(said), 'not above 2000 feet 1008 qnh report ilkley');
+  assert.deepEqual(match(said, [QNH(1008)], { reg: 'G-CZIA' }, { kind: 'readback' }).hardMissing, []);
+  // ...and nothing else with an H in it moves
+  assert.equal(normalize('squawk 5626 golf charlie lima hotel papa'), 'squawk 5626 g c l h p');
+  assert.equal(normalize('q and h 1 0 0 8'), 'qnh 1008');
+});
+
+test('what the recogniser makes of “alpha” still ends the callsign, and no other letter does', () => {
+  const form = t => (findCallsign(tokens(t), 'G-CZIA') || {}).form || null;
+  assert.equal(form('skork 7000 changing frequency golf India outer'), 'abbr');
+  assert.equal(form('q&h 1007 golf India offer'), 'abbr');
+  assert.equal(form('orbit left golf India Elsa'), 'abbr');
+  assert.equal(form('golf Charlie Zulu India outer'), 'full');
+  assert.equal(form('golf India oscar'), null, 'Oscar is a letter: another aircraft');
+  assert.equal(form('golf India echo'), null);
 });
 
 // "I say again" is the pilot repeating their own message, usually because ATC asked: it was taken as the pilot asking

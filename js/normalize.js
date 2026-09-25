@@ -37,6 +37,7 @@ const HYPHENATED = [[/\bx-ray\b/g, 'xray'], [/\be-mail/g, 'email']];
 // Multi-word and spelling variants folded before tokenising.
 const PHRASES = [
   [/\b[qu]\s?(?:n|&|and)\s?h(?=\s?\d)/g, 'qnh '],   // glued to its number, or the Q heard as "you": unh1015
+  [/(\d) ?h(?=q ?(?:n|&|and) ?h\b)/g, '$1 8 '],            // "eight" heard as the letter: "1 0 0 HQ and H" for 1008 QNH
   [/\bq\.?\s?n\.?\s?h\.?\b/g, 'qnh'], [/\bq\s?(and|&)\s?h\b/g, 'qnh'],
   [/\bq\.?\s?f\.?\s?e\.?\b/g, 'qfe'],
   [/\bv\.?\s?f\.?\s?r\.?\b/g, 'vfr'],
@@ -62,6 +63,7 @@ const PHRASES = [
   // "control airspace", "controls air space". It never touches "control zone", which is a different place.
   [/\bair space\b/g, 'airspace'],
   [/\bcontrols? airspace\b/g, 'controlled airspace'],
+  [/\bcontrolled service\b/g, 'control service'],        // ...and adds one to "radar control service", said right
   [/\bthe [dvb]?f\.?\s?r\.?\b/g, 'vfr'],                // "VFR" comes back as "the FR", "the DFR"
   [/\b[bd]\.?\s?f\.?\s?r\.?\b/g, 'vfr'],                  // ...and "BFR"
   [/\bthey are(?: the)?\b(?=\s+(?:not|\d))/g, 'vfr'],       // ...and, in a clearance, "they are the not above"
@@ -248,10 +250,14 @@ export function findCallsign(toks, reg) {
  * A second look, for when speech recognition turned one of the letters into an ordinary word: "golf charlie
  * zulu author" or "golf charlie zulu in the alpha" for G-CZIA. We know the registration, so a word may stand
  * in for one of the letters still to come only when it begins with that letter ("Author" for "Alpha", "India"
- * for the "in" of "in the"); a word that fits nothing is a stray the recogniser invented, and we allow a
- * couple of those. A single letter that is not the next one is a different aircraft, and stops the scan — so
- * G-CZIH is never read as G-CZIA. At least half the letters must still have arrived as letters.
+ * for the "in" of "in the"), or when it is one the recogniser has been heard to make of that letter's name (ALIKE);
+ * a word that fits nothing is a stray the recogniser invented, and we allow a couple of those. A single letter that
+ * is not the next one is a different aircraft, and stops the scan — so G-CZIH is never read as G-CZIA. At least half
+ * the letters must still have arrived as letters.
  */
+// "Alpha" most of all, and not always with an A: "golf India outer" drew "say callsign" on 25 September. None of these
+// is a letter's name, so none can be another aircraft's letter.
+const ALIKE = { a: ['outer', 'out', 'offer', 'oven', 'elsa', 'elfa', 'ella', 'elther', 'eltha', 'rather'] };
 function spelled(toks, full, form = 'full') {
   for (let i = 0; i < toks.length; i++) {
     if (toks[i] !== full[0]) continue;
@@ -260,6 +266,7 @@ function spelled(toks, full, form = 'full') {
       const t = toks[j];
       if (t === full[k]) { k++; j++; heard++; continue; }
       if (t.length === 1) break;                              // a letter we did not expect: not this aircraft
+      if (ALIKE[full[k]]?.includes(t)) { k++; j++; continue; } // what the recogniser makes of that letter's name
       const at = full.indexOf(t[0], k);
       if (at >= 0) { k = at + 1; j++; continue; }              // the word stands in for that letter
       if (slack) { slack--; j++; continue; }                   // a stray word between the letters

@@ -4,7 +4,7 @@
 // Change the route in flight (the map's Direct to / Divert) and the controller picks up from wherever the flight
 // has got to: tell them, and they re-clear you or carry on with a Basic Service. Cleared inside controlled
 // airspace, you ask first and the aircraft keeps to the clearance until they approve.
-import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, TRAFFIC_ACK, TERMINATED_ACK, details, initialCall, useSquawk } from './common.js';
+import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, RESUME, TRAFFIC_ACK, TERMINATED_ACK, details, initialCall, useSquawk } from './common.js';
 import { planRoute, reroutePoints, presentPosition, routeText, whereIs } from '../route.js';
 import { miles } from '../geo.js';
 
@@ -100,7 +100,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     await s.leg('Orbiting', s.ctx.speedKt * 2 / 60, { cue: orbiting ? 'Orbit left and keep listening.' : 'ATC believes you are orbiting.' });
     const to = nextReport();
     await s.atc(`{CALL}, resume own navigation${to ? ` to ${to.name}` : ''}`, {
-      readback: [P('resume own navigation', ['resume own navigation', 'resume'], { fix: 'resume own navigation' }), ...(to ? [named(to, `resume own navigation to ${to.name}`)] : [])],
+      readback: [RESUME(), ...(to ? [named(to, `resume own navigation to ${to.name}`)] : [])],
       model: `Resume own navigation${to ? ` to ${to.name}` : ''}, {CALL}` });
     await s.action({ id: 'orbit-resume', action: 'orbit', value: false, cue: 'Stop orbiting: press Orbit again.',
       done: () => !s.orbiting(), nudge: '{CALL}, confirm resuming own navigation', timeout: 15 });

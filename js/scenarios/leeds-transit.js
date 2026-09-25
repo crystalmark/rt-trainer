@@ -1,4 +1,4 @@
-import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, TRAFFIC_ACK, details, initialCall, leedsTraffic, useSquawk } from './common.js';
+import { P, WILCO, QNH, SQUAWK, BASIC, NOT_ABOVE, ROS, RESUME, TRAFFIC_ACK, details, initialCall, leedsTraffic, useSquawk } from './common.js';
 import { areaById } from '../areas/index.js';
 
 const SALTS_MILL = ['salts mill', 'salt mill', 'saltaire'];
@@ -87,7 +87,7 @@ export default {
         model: 'Orbit left at present position, {CALL}' });
       await s.leg('Orbiting', 2, { cue: 'Orbit left and keep listening.' });
       await s.atc('{CALL}, resume own navigation to Eccup Reservoir', {
-        readback: [P('resume own navigation', ['resume own navigation', 'resume'], { fix: 'resume own navigation' }), P('Eccup', ['eccup'], { fix: 'resume own navigation to Eccup Reservoir' })],
+        readback: [RESUME(), P('Eccup', ['eccup'], { fix: 'resume own navigation to Eccup Reservoir' })],
         model: 'Resume own navigation to Eccup Reservoir, {CALL}' });
     }
     if (s.chance(0.6)) {

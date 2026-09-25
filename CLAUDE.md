@@ -11,7 +11,8 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   hesitation (`HESITATION`). Add new mishearings here with a test, rather than loosening the readback items.
   `findCallsign` goes further for the pilot's own callsign, because the registration is known: a word standing
   where a letter should be ("golf charlie zulu author" for G-CZIA) is read as that letter, but only when it
-  begins with the same letter — so another aircraft's callsign is never claimed.
+  begins with the same letter, or is one the recogniser has been heard to make of that letter's name (`ALIKE`:
+  "outer", "Elsa" for alpha). None of those is a letter's name, so another aircraft's callsign is never claimed.
 - `js/matcher.js`: `match(text, spec, ctx)` checks a transmission against readback items and
   returns missing hard/soft items, substitutions ("zone" for "controlled airspace"), order,
   fillers and a 0–100 score.

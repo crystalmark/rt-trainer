@@ -28,6 +28,8 @@ export const ROS = () => P('remain outside controlled airspace', ['remain outsid
   fix: 'remain outside controlled airspace',
   why: 'Read back the controller’s exact words. Controlled airspace includes the CTAs, not just the zone.',
 });
+// "Resuming own navigation" likewise: it was marked wrong, twice running, while the controller's own chase said it.
+export const RESUME = () => P('resume own navigation', ['resume own navigation', 'resuming own navigation', 'resume', 'resuming'], { fix: 'resume own navigation' });
 export const TRAFFIC_ACK = () => P('traffic acknowledged', ['traffic in sight', 'in sight', 'looking', 'visual', 'negative contact', 'not sighted', 'no contact'], {
   why: 'Answer traffic information with “looking”, “traffic in sight” or “negative contact”.',
 });
