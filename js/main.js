@@ -14,7 +14,7 @@ import { PushToTalk } from './ptt.js';
 import { Claude } from './claude.js';
 import { computeDebrief } from './debrief.js';
 import { rowsFrom, stats as heardStats, append as heardAppend, load as heardLoad, clear as heardClear, deviceName } from './heard.js';
-import { tokens, findCallsign, normalize, speakable } from './normalize.js';
+import { tokens, findCallsign, normalize, speakable, tidyReg } from './normalize.js';
 
 const $ = id => document.getElementById(id);
 const DEVICE = deviceName(navigator.userAgent);           // which device each speech recognition log row came from
@@ -89,7 +89,7 @@ function renderSetup() {
     </div>`).join('');
   state.profiles.forEach((p, i) => {
     for (const f of ['reg', 'type', 'kt', 'x']) $(`e-${f}-${i}`).addEventListener('change', () => {
-      p.reg = $(`e-reg-${i}`).value.trim().toUpperCase() || p.reg;
+      p.reg = tidyReg($(`e-reg-${i}`).value) || p.reg;
       p.type = $(`e-type-${i}`).value.trim() || p.type;
       p.speedKt = Number($(`e-kt-${i}`).value) || p.speedKt;
       p.transponder = $(`e-x-${i}`).checked;

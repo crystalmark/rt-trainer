@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalize, findCallsign, tokens, speakable } from '../js/normalize.js';
+import { normalize, findCallsign, tokens, speakable, tidyReg } from '../js/normalize.js';
 import { match, hasAny, isSayAgain } from '../js/matcher.js';
 import { AREAS } from '../js/areas/index.js';
 import { BASIC, SQUAWK, ROS, RESUME, QNH, P } from '../js/scenarios/common.js';
@@ -415,4 +415,13 @@ test('SafetyCom, however it is heard, is one word', () => {
   assert.equal(normalize('change frequency to safety comma 135 decimal for eight zero'), 'change frequency to safetycom 135.48');
   assert.equal(normalize('safety comm one three five decimal four eight zero'), 'safetycom 135.48');
   assert.equal(normalize('Safetycom'), 'safetycom');
+});
+
+test('a registration typed in setup is tidied, and recognised whichever way it was typed', () => {
+  assert.equal(tidyReg(' gabcd '), 'G-ABCD');
+  assert.equal(tidyReg('G-ABCD'), 'G-ABCD');
+  assert.equal(tidyReg('g abcd'), 'G-ABCD');
+  assert.equal(tidyReg('EI-ABC'), 'EI-ABC', 'only UK registrations get a hyphen put in');
+  assert.equal(tidyReg('N123AB'), 'N123AB');
+  for (const reg of ['G-ABCD', 'GABCD']) assert.equal(findCallsign(tokens('golf alpha bravo charlie delta'), reg).form, 'full');
 });

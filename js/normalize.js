@@ -208,6 +208,12 @@ export function callsignForms(reg) {
   return { full: letters, abbr: letters[0] + letters.slice(-2) };
 }
 
+/** A registration as typed in setup: upper case, and a UK one gets its hyphen ("gczia" -> "G-CZIA") */
+export function tidyReg(typed) {
+  const r = String(typed).trim().toUpperCase().replace(/\s+/g, '');
+  return /^G[A-Z]{4}$/.test(r) ? `G-${r.slice(1)}` : r;
+}
+
 /** "G-CLHP" -> "Golf Charlie Lima Hotel Papa" */
 export function phoneticCallsign(reg) {
   return String(reg).toLowerCase().replace(/[^a-z]/g, '').split('').map(c => LETTER_TO_WORD[c]).join(' ');
