@@ -635,7 +635,7 @@ export class Engine {
   // `extras` are items worth hearing here but not required: they help pick the best transcript and come back
   // in the result, but they are only scored and put in the debrief when countExtras(r) says the pilot chose to
   // give them. That is how a short initial call stays correct while a full one is still marked.
-  async expect({ id, cue, items = [], extras = [], countExtras = null, timeout, nudge, optional = false, initial = false, model = null, afterAtc = false, warn = [] }) {
+  async expect({ id, cue, items = [], extras = [], countExtras = null, timeout, nudge, optional = false, initial = false, model = null, afterAtc = false, warn = [], instead = null }) {
     if (cue) { this.emit('cue', { text: cue }); this.log('cue', { text: cue }); }
     this.emit('awaiting', { waitKind: 'call', id, spec: items, cue });
     this.lastWaitKind = 'call'; this.currentSpec = items;
@@ -662,15 +662,23 @@ export class Engine {
         await this.atc(repeatOf(this.lastToPilot));
         continue;
       }
-      const { text, r } = this.bestMatch(tx, extras.length ? [...items, ...extras] : items, 'call');
-      const rescued = this.rescued(text, r, items, 'call');
+      let { text, r } = this.bestMatch(tx, extras.length ? [...items, ...extras] : items, 'call');
+      // `instead` is another call that answers just as well ({ id, items, model }), taken when it is all there and the
+      // one expected is not: told to report changing frequency, then sent round on the map, a request to change
+      // frequency was asked for a "change of plan" call, and went to Claude.
+      let call = { id, items, extras, model };
+      if (instead && r.hardRatio < 1) {
+        const other = this.bestMatch(tx, instead.items, 'call');
+        if (other.r.hardRatio === 1) { ({ text, r } = other); r.instead = instead.id; call = { ...instead, extras: [] }; }
+      }
+      const rescued = this.rescued(text, r, call.items, 'call');
       for (const w of warn.concat(this.scenario.warn || [])) if (w.re.test(text.toLowerCase())) r.fillers.push(w.why);
       if (!blind && !initial && r.hardRatio < 0.35 && looksLikeRequest(text) && this.claude) throw new OffScript(tx);
-      const counted = !extras.length || (countExtras && countExtras(r));
-      const scored = counted ? r : match(text, items, this.ctx, { kind: 'call' });
+      const counted = !call.extras.length || (countExtras && countExtras(r));
+      const scored = counted ? r : match(text, call.items, this.ctx, { kind: 'call' });
       // Reply time is for answers to ATC: a report made unprompted is timed from whatever ATC last said, however long
       // ago, and at a faster time scale made a prompt pilot "slow to answer".
-      this.log('call', { id, text, heard: text === tx.text ? null : tx.text, alts: tx.alternatives || null, latency: afterAtc || nudged ? tx.latency : null, result: summarise(scored), model: model ? this.fill(model) : null, ...(rescued ? { rescued } : {}) });
+      this.log('call', { id: call.id, text, heard: text === tx.text ? null : tx.text, alts: tx.alternatives || null, latency: afterAtc || nudged ? tx.latency : null, result: summarise(scored), model: call.model ? this.fill(call.model) : null, ...(rescued ? { rescued } : {}) });
       r.hasAll = (key) => r.items.some(i => i.key === key && i.matched);
       if (blind) return r;
       if (!r.callsign) {

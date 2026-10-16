@@ -25,7 +25,9 @@ no build step, no dependencies. Target browsers: Chrome on Android (Pixel) and m
   `briefing(ctx)` returns `['Label', 'text']` pairs, or `['Careful', 'text', 'warn']` for something to watch:
   one fact per entry, because the briefing screen gives each its own labelled row (a test enforces both).
   `run` is an async script using the scenario API: `s.atc(text, { readback, model, clearance, reply })`,
-  `s.expect({ id, cue, items, nudge, optional, initial, model })`, `s.leg(label, nm, { cue, early })`,
+  `s.expect({ id, cue, items, nudge, optional, initial, model, instead })`
+  (`instead: { id, items, model }` is another call that answers just as well, taken and logged under its own id when
+  it is all there and the expected one isn't), `s.leg(label, nm, { cue, early })`,
   (`early: true` on a leg or `s.reach()` that ends with a call of the pilot's: a call made a little before the
   point is kept for the expectation that follows instead of drawing "say again" or going to Claude; before the
   first call of a flight that is automatic),

@@ -130,12 +130,10 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
 
   // The pilot asks to go and the controller lets them. If they never ask, nothing is approved: the service is
   // terminated instead, which is what a controller does with an aircraft that has gone quiet on them.
-  async function leaveFrequency(s, summary) {
+  // `asked` is the request already made, when it came in place of another call (see rejoin).
+  async function leaveFrequency(s, summary, asked) {
     const x = s.ctx.transponder, to = destination(plan).name;
-    const asked = await s.expect({ id: 'qsy', cue: `Coming up on ${to}. Ask to leave the frequency.`,
-      nudge: '{CALL}, say intentions',
-      items: [P('changing frequency', ['changing', 'frequency', 'leaving your frequency', 'request frequency change', 'safetycom'])],
-      model: `{CALL}, ${miles(Math.max(1, plan.total - s.position().s))} from ${to}, request frequency change` });
+    if (asked === undefined) asked = await s.expect({ ...qsyCall(s), cue: `Coming up on ${to}. Ask to leave the frequency.`, nudge: '{CALL}, say intentions' });
     // SafetyCom moved from 135.475 to 135.480 with 8.33 kHz spacing, and near misses are common. A controller
     // will not correct a frequency that is not theirs, so the debrief does.
     const f = asked && (asked.norm.match(/\b135\.4\d*\b/) || [])[0];
@@ -150,6 +148,11 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     }
     await useSquawk(s, '7000', { chase: false });
     s.end(summary);
+  }
+
+  function qsyCall(s) {
+    return { id: 'qsy', items: [P('changing frequency', ['changing', 'frequency', 'leaving your frequency', 'request frequency change', 'safetycom'])],
+      model: `{CALL}, ${miles(Math.max(1, plan.total - s.position().s))} from ${destination(plan).name}, request frequency change` };
   }
 
   // ---------- the flight, phase by phase ----------
@@ -407,10 +410,15 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     // Not in on the new route without a clearance for it: cleared for the old one, the aircraft flew in before the new
     // clearance came.
     if (T) s.hold(Math.max(s.position().s, T.sIn - 1), 'Holding for your clearance');
-    await s.expect({ id: 'reroute', cue: `Tell ${area.unit} about your change of plan.`, nudge: '{CALL}, say intentions',
-      items: [named(target, null, { ask: '{CALL}, say your routing' })],
+    // Told to report changing frequency (refused, or through and out), on a way round that stays outside: asking to
+    // change frequency answers as well as telling them the new route. It went to Claude, after the app's own cue had
+    // sent you to the map to pick that way round.
+    const told = (st.refused || st.left) && (!T || st.refused);
+    const reroute = await s.expect({ id: 'reroute', cue: `Tell ${area.unit} about your change of plan.`, nudge: '{CALL}, say intentions',
+      items: [named(target, null, { ask: '{CALL}, say your routing' })], instead: told ? qsyCall(s) : null,
       model: T ? `{CALL}, change of plan, request ${transitWords(T)}, route direct ${target.name}`
         : `{CALL}, change of plan, routing direct ${target.name}, remaining outside controlled airspace` });
+    if (reroute && reroute.instead) return leaveFrequency(s, st.refused ? 'Transit refused: routed round' : 'Transit completed', reroute);
     if (!st.service) await service(s, plan);
     if (T) {
       if (st.refused) {

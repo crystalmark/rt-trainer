@@ -545,6 +545,40 @@ test('asking to change frequency after a refusal is the call ATC asked for', asy
   assert.equal(asked.length, 0);
 });
 
+// The flight of 16 October: refused, and sent by the app's own cue to the map to pick a way round. Direct to there
+// started a wait for a "change of plan" call, so the request to change frequency that followed went to Claude, and
+// took three calls to get off the frequency.
+test('refused, a way round picked on the map, then asking to change frequency stays on script', async () => {
+  const asked = [];
+  const claude = { atc: async () => { asked.push(1); return { transmissions: ['{CALL}, roger'], end: true, summary: 'Ended off script' }; } };
+  for (const text of [ROUTES[0], 'Oxenhope to Oxenhope via Ilkley at 2000 ft']) {
+    const scenario = scenarioFor(text, 3), dest = scenario.plan.points.at(-1).place;
+    const clock = fakeClock(4000), radio = fakeRadio(clock);
+    let handler = () => {};
+    const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(3),
+      settings: { trafficDensity: 'quiet', refusalBias: 1 }, claude, onEvent: e => handler(e) });
+    const perfect = perfectPilot(engine);
+    let turned = false;
+    handler = ev => {
+      if (!turned && ev.kind === 'log' && ev.event.type === 'readback' && /Basic Service continues/.test(ev.event.atcText || '')) {
+        turned = true;
+        setTimeout(() => {
+          assert.equal(engine.changeRoute({ action: 'direct', place: dest }), null);
+          setTimeout(() => sendWhenClear(engine, 'golf India alpha request change of frequency to SafetyCom one three five decimal four eight zero'), 50);
+        }, 1);
+      }
+      if (turned && ev.kind === 'awaiting' && (ev.id === 'reroute' || ev.id === 'qsy')) return;   // already said it
+      perfect(ev);
+    };
+    const events = await engine.start();
+    assert.ok(!events.some(e => e.type === 'offscript' || e.type === 'unexpected'), `${text}: ${JSON.stringify(events.filter(e => e.type === 'offscript' || e.type === 'unexpected'))}`);
+    assert.match(events.find(e => e.type === 'call' && e.id === 'qsy')?.text || '', /SafetyCom/, text);
+    assert.ok(events.some(e => e.type === 'atc' && /frequency change approved/.test(e.text)), text);
+    assert.equal(events.at(-1).summary, 'Transit refused: routed round', text);
+  }
+  assert.equal(asked.length, 0);
+});
+
 // Out and back through the zone, the shape of the Forth bridges flight: a place flown past twice is two reports.
 // Looked up by place, both were cued at the second visit, and a report made on reaching the first drew "say again".
 test('out and back: each report is cued at its own visit', async () => {
