@@ -148,3 +148,7 @@ See `docs/deploy.md`.
   are published here rather than in each aerodrome's AD 2 entry: Keighley is no longer a Leeds VRP.
 - Landmark positions: GeoNames (CC BY 4.0), via the Open-Meteo geocoder
 - Carlisle Lake District Airport airfield information; Flexwing Scotland airfield cards
+
+## Licence
+
+The code is MIT licensed (see `LICENSE`). The data credited under Sources keeps its own terms.
