@@ -929,3 +929,19 @@ test('skip stops when you key the mic, and when the controller calls you', async
   engine.stop();
   await flight;
 });
+
+test('paused, talking without pressing PTT is not marked as a hot mic', async () => {
+  const clock = fakeClock(100);
+  const radio = fakeRadio(clock);
+  const scenario = { id: 'hot-paused', title: 'Hot', unit: 'Leeds Radar', freq: '134.580',
+    briefing: () => [['Aircraft', 'G-CZIA']], async run(s) { await s.leg('A long quiet leg', 60); } };
+  const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(2), settings: { trafficDensity: 'quiet' } });
+  const flight = engine.start();
+  engine.setPaused(true);
+  engine.hotMic();
+  engine.setPaused(false);
+  engine.hotMic();
+  engine.stop();
+  const events = await flight;
+  assert.equal(events.filter(e => e.type === 'hot-mic').length, 1, 'only the one made while flying');
+});

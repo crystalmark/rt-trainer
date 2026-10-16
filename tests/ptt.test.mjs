@@ -233,3 +233,20 @@ test('the click comes when the recogniser is listening, so you know when to spea
   await ptt.up();
   ptt.destroy();
 });
+
+// Paused for an interruption: the pad is the way back, and nothing goes out on it. Talking to whoever interrupted
+// you isn't a transmission either.
+test('paused, a press transmits nothing', async () => {
+  const downs = [];
+  const { ptt, got } = make({ onDown: () => downs.push(1) });
+  await ptt.init();
+  try {
+    ptt.paused = true;
+    await press(ptt);
+    assert.equal(downs.length, 0);
+    assert.deepEqual(got, []);
+    ptt.paused = false;
+    await press(ptt);
+    assert.equal(downs.length, 1, 'resumed, the next press goes out');
+  } finally { ptt.destroy(); }
+});

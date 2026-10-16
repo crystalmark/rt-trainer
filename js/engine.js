@@ -308,6 +308,7 @@ export class Engine {
   }
 
   hotMic() {
+    if (this.paused) return;                            // talking to whoever interrupted you is not a transmission
     this.log('hot-mic', {});
     this.emit('toast', { level: 'warn', text: 'Not transmitted: you spoke without pressing PTT.' });
   }

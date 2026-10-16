@@ -374,6 +374,22 @@ const MIC_TROUBLE = {
   NotReadableError: 'The microphone couldn’t be opened: close anything else using it and start again.',
 };
 
+function pauseFlight(on) {
+  const e = state.engine;
+  if (!e || !e.running || on === e.paused || (on && state.ptt?.keyed)) return;    // not in the middle of a transmission
+  e.setPaused(on);
+  if (on) state.radio?.pause(); else state.radio?.resume();
+  if (state.ptt) state.ptt.paused = on;
+  const pad = $('ptt'), label = pad.querySelector('.ptt-label');
+  if (on) { pad.dataset.label = label.textContent; label.textContent = 'PAUSED'; }
+  else label.textContent = pad.dataset.label || 'HOLD TO TRANSMIT';
+  pad.classList.toggle('paused', on);
+  pad.disabled = !on && !state.ptt;                    // listening only, it is dimmed again on resume
+  pad.setAttribute('aria-label', on ? 'Paused: tap to resume' : 'Push to talk (hold)');
+  const b = $('f-pause');
+  b.textContent = on ? 'Resume' : 'Pause'; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on));
+}
+
 function listenOnly(why) {
   $('ptt').disabled = true;
   $('ptt').querySelector('.ptt-label').textContent = 'LISTEN ONLY';
@@ -404,7 +420,8 @@ function resetFlightUi(p) {
   $('rh-xpdr-mode').textContent = p.transponder ? 'ALT' : 'XPDR';    // as the head unit reads in Mode C
   $('rh-squawk').textContent = p.transponder ? '7000' : 'NONE';
   $('f-text').textContent = `Text: ${state.showText ? 'on' : 'off'}`;
-  $('f-pause').textContent = 'Pause';
+  $('f-pause').textContent = 'Pause'; $('f-pause').classList.remove('on'); $('f-pause').setAttribute('aria-pressed', 'false');
+  $('ptt').classList.remove('paused'); $('ptt').setAttribute('aria-label', 'Push to talk (hold)');
   $('f-skip').textContent = 'Skip ahead'; $('f-skip').setAttribute('aria-pressed', 'false'); $('f-skip').classList.remove('on');
 }
 
@@ -596,11 +613,10 @@ $('f-skip').addEventListener('click', () => {
   if (wasOn) toast('Back to real time.', 'info');
   else if (!ok) toast('Nothing to skip just now: wait until the frequency is clear.', 'info');
 });
-$('f-pause').addEventListener('click', () => {
-    const e = state.engine; if (!e) return;
-    e.setPaused(!e.paused); $('f-pause').textContent = e.paused ? 'Resume' : 'Pause';
-    if (e.paused) state.radio?.pause(); else state.radio?.resume();
-  });
+$('f-pause').addEventListener('click', () => { if (state.engine) pauseFlight(!state.engine.paused); });
+  // Paused, the transmit pad says so in large letters and a tap on it resumes: with only the button's label changing,
+  // coming back after an interruption it wasn't clear the flight was paused, or how to carry on.
+  $('ptt').addEventListener('pointerup', () => { if (state.engine?.paused) pauseFlight(false); });
   // A flight that has already stopped and still shows this screen never reached its debrief: End leaves it anyway.
   $('f-end').addEventListener('click', () => { if (state.engine?.running) state.engine.stop(); else abandonFlight(); });
   bindMap();

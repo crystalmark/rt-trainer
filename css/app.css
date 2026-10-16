@@ -183,6 +183,12 @@ body:has(#flight:not([hidden])) .toast { bottom: auto; top: calc(8px + env(safe-
 .ptt.keyed { background: radial-gradient(circle at 50% 35%, #7A241D, #3E110D); border-color: var(--tx); }
 .ptt.keyed .ptt-label::after { content: " · TX"; color: #FFB3AA; }
 .ptt[disabled] { opacity: .45; cursor: default; }
+.ptt-hint { display: none; font: 600 15px var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--ink); }
+/* Paused: the pad says so and is the way back; nothing goes out on it */
+.ptt.paused { border-color: var(--lcd); background: radial-gradient(circle at 50% 35%, #3A2E12, #1B1508); }
+.ptt.paused .ptt-label { color: var(--lcd); font-size: 34px; }
+.ptt.paused .ptt-meter { display: none; }
+.ptt.paused .ptt-hint { display: block; }
 .ptt-meter { width: 60%; height: 6px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; }
 .ptt-meter span { display: block; height: 100%; width: 0; background: var(--ok); }
 .flightbar { display: flex; gap: 8px; justify-content: space-between; }

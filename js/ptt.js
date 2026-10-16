@@ -46,6 +46,7 @@ export class PushToTalk {
     this.keyed = false;
     this.press = null;             // this transmission, or the last one while its words are still arriving
     this.enabled = false;
+    this.paused = false;           // the flight is paused: no transmitting, and no hot-mic warnings
   }
 
   static supported() {
@@ -148,7 +149,7 @@ export class PushToTalk {
   }
 
   down() {
-    if (!this.enabled || this.keyed) return;
+    if (!this.enabled || this.paused || this.keyed) return;
     // Pressed again before the last transmission's words were all in: hand that one over now, with what it has,
     // rather than lose it, and before this press is announced so the two can't cross.
     if (this.press && !this.press.delivered) this.deliver(this.press, { reopen: false });
@@ -228,7 +229,7 @@ export class PushToTalk {
     if (!this.keyed && !busy) this.floor = this.floor * 0.98 + Math.min(rms, 0.05) * 0.02;
     const threshold = Math.max(0.03, this.floor * 4);
     const now = performance.now();
-    if (this.hotMicOn && !this.keyed && !busy && rms > threshold) {
+    if (this.hotMicOn && !this.paused && !this.keyed && !busy && rms > threshold) {
       if (!this.loudSince) this.loudSince = now;
       if (now - this.loudSince > 1200 && now - this.lastHot > 6000) { this.lastHot = now; this.onHotMic?.(); }
     } else this.loudSince = 0;
