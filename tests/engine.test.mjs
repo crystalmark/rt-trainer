@@ -906,3 +906,26 @@ test('a transmission is rescued only when the fold made the difference', async (
     '"affirmative" needed its fold; "escort" was folded but the code alone would have done');
   assert.equal(stats(rows).rescued, 1);
 });
+
+test('skip stops when you key the mic, and when the controller calls you', async () => {
+  const clock = fakeClock(100);
+  const radio = fakeRadio(clock);
+  const scenario = {
+    id: 'skip-stop', title: 'Skip', unit: 'Leeds Radar', freq: '134.580',
+    briefing: () => [['Aircraft', 'G-CZIA']],
+    async run(s) { await s.leg('A long quiet leg', 60); },
+  };
+  const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(2), settings: { trafficDensity: 'quiet' } });
+  const flight = engine.start();
+  await new Promise(r => setTimeout(r, 80));
+  assert.equal(engine.skip(), true);
+  engine.pilotKeyDown();
+  assert.equal(engine.boost, 1, 'keying the mic ends the skip');
+  engine.pilotTransmission('');
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(engine.skip(), true);
+  await engine.transmit('atc', '{CALL}, report your position', { toPilot: true });
+  assert.equal(engine.boost, 1, 'a call to you ends the skip');
+  engine.stop();
+  await flight;
+});

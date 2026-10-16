@@ -585,8 +585,9 @@ function bindFlight() {
     $('f-text').textContent = `Text: ${state.showText ? 'on' : 'off'}`;
     for (const l of $('log').children) if (!l.classList.contains('me')) { l.classList.toggle('hidden-text', !state.showText); l.lastChild.textContent = state.showText ? l.dataset.text : '(transmission)'; }
   });
-  // Skip the boring middle of a long leg. The engine refuses while anyone is talking or anything is expected of
-// you, so it can never carry you past a call; it stops by itself when the leg ends.
+  // Skip the boring middle of a long leg, or the long way home before you ask to change frequency. The engine refuses
+// while anyone is talking or the controller is waiting for your answer, so it can never carry you past a call; it
+// stops by itself when the leg ends, the controller calls you or you key the mic.
 $('f-skip').addEventListener('click', () => {
   const e = state.engine;
   if (!e) return;

@@ -728,3 +728,37 @@ test('the request to change frequency names the station and gives the frequency'
   // The unit you are leaving is not the station you are going to.
   assert.deepEqual((await qsy('Leeds Radar golf India alpha request frequency change 135.480')).softMissing.map(i => i.label), ['station']);
 });
+
+// Refused, sent round on the map, and the long way home flew at real time: skip was only offered on a leg, and the
+// script was waiting for your next call. Skip now runs until someone calls, as long as the next call is yours.
+test('skip ahead runs on the way round home, until your call', async () => {
+  const scenario = scenarioFor('Oxenhope to Oxenhope via Ilkley at 2000 ft', 3), dest = scenario.plan.points.at(-1).place;
+  const clock = fakeClock(4000), radio = fakeRadio(clock);
+  let handler = () => {};
+  const engine = new Engine({ scenario, profile: PROFILES[1], radio, clock, rng: seeded(3),
+    settings: { trafficDensity: 'quiet', refusalBias: 1, reportTimeout: 600 }, onEvent: e => handler(e) });
+  const perfect = perfectPilot(engine);
+  let turned = false, checked = null;
+  handler = ev => {
+    if (!turned && ev.kind === 'log' && ev.event.type === 'readback' && /Basic Service continues/.test(ev.event.atcText || '')) {
+      turned = true;
+      setTimeout(() => assert.equal(engine.changeRoute({ action: 'direct', place: dest }), null), 1);
+    }
+    if (turned && ev.kind === 'awaiting' && ev.id === 'reroute') {
+      setTimeout(() => {
+        const rate = engine.navRate();
+        checked = { skipped: engine.skip(), boost: engine.boost, fast: engine.navRate() / rate };
+        sendWhenClear(engine, 'golf India alpha request frequency change to SafetyCom 135.480');
+      }, 20);
+      return;
+    }
+    if (turned && ev.kind === 'awaiting' && ev.id === 'qsy') return;
+    perfect(ev);
+  };
+  const events = await engine.start();
+  assert.equal(checked?.skipped, true, JSON.stringify(checked));
+  assert.equal(checked.boost, 20);
+  assert.ok(checked.fast > 1, `the aircraft goes faster: ${JSON.stringify(checked)}`);
+  assert.equal(events.at(-1).summary, 'Transit refused: routed round');
+  assert.ok(events.some(e => e.type === 'skip'));
+});

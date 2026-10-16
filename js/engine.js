@@ -149,6 +149,7 @@ export class Engine {
     // answering, or between the lines of an exchange. Either way nobody talks over them.
     await this.holdForPilot();
     const display = this.fill(text);
+    if (meta.toPilot) this.unskip();                    // the controller is calling you: back to real time
     this.log(speaker === 'atc' ? 'atc' : 'traffic', { speaker, text: display, ...meta });
     this.emit('radio', { speaker, text: display, meta });
     const res = await this.radio.say(speaker, display, this.toSpeech(display), meta);
@@ -161,6 +162,7 @@ export class Engine {
   // ---------- pilot input (called by the UI) ----------
   pilotKeyDown() {
     this.keyed = true;
+    this.unskip();
     this.keyDownAt = this.now();
     this.steppedIn = false;              // each transmission is judged by its own key-down
     if (this.radio.busy) {
@@ -433,15 +435,17 @@ export class Engine {
 
   navRate() {
     // Off script the wait for the pilot is always up: only the gap after the controller spoke to them counts.
-    const waiting = this.mode === 'free' ? this.now() < this.trafficHoldUntil : !!this.waiter;
+    const waiting = this.mode === 'free' ? this.now() < this.trafficHoldUntil : !!this.waiter && !(this.boost !== 1 && this.awaitingReport());
     const busy = this.radio.busy || this.channelLocked || waiting || this.keyed || this.exchangeActive;
     return busy ? 1 : this.settings.timeScale * this.boost;
   }
 
   /**
-   * Skip ahead down the leg you are on. It is refused while anyone is talking, while anything is expected of
-   * you, or when there is no leg to skip — so it can never carry you past a call. It stops by itself when the
-   * leg ends, which is the next thing that happens, and a second press cancels it.
+   * Skip ahead: down the leg you are on, or along the route while the next call is yours to make (a report, asking to
+   * change frequency, anything off script). Refused while anyone is talking or the controller is waiting for your
+   * answer, so it can never carry you past their call. It stops by itself when the leg ends, when the controller
+   * calls you, when you key the mic or when the aircraft gets where it is going; a second press cancels it.
+   * Only on a leg it was, and flying a long way round home after a refused transit went at real time.
    */
   skip(factor = 20) {
     if (this.boost !== 1) { this.unskip(); return false; }
@@ -457,8 +461,18 @@ export class Engine {
     this.emit('skip', { on: false });
   }
   canSkip() {
-    return !!(this.running && this.legActive && !this.paused && !this.waiter && !this.keyed
-      && !this.radio.busy && !this.channelLocked && !this.exchangeActive);
+    return !!(this.running && !this.paused && !this.keyed && !this.radio.busy && !this.channelLocked && !this.exchangeActive
+      && ((this.legActive && !this.waiter) || (this.awaitingReport() && this.cruising())));
+  }
+  /** Nothing is owed to the controller: the script waits for a call you make when you choose, or Claude has the flight. */
+  awaitingReport() {
+    if (this.mode === 'free') return this.now() >= this.trafficHoldUntil;
+    return !!(this.waiter && this.lastWaitKind === 'call' && !this.callAfterAtc);
+  }
+  /** Still flying somewhere: not at the end of the route, held short of a point or orbiting. */
+  cruising() {
+    const n = this.nav;
+    return !!(n && !n.pilotHold && n.s < Math.min(n.limit, n.plan.total) - 1e-3);
   }
 
   /** A leg's own sleep: drains faster while skipping, and never while someone is on the frequency. */
@@ -487,6 +501,7 @@ export class Engine {
     const cap = n.pilotHold ? n.s : Math.min(n.limit, n.plan.total);
     if (n.s < cap) n.s = Math.min(cap, n.s + this.ctx.speedKt * this.navRate() * dt / 3600000);
     n.orbiting = n.pilotHold || (n.s >= cap - 1e-6 && cap < n.plan.total);
+    if (this.boost !== 1 && !this.legActive && !this.cruising()) this.unskip();   // got there: a leg stops its own
     if (now - n.emitted >= 1000) { n.emitted = now; this.emit('nav', this.navState()); }
   }
 
@@ -638,7 +653,7 @@ export class Engine {
   async expect({ id, cue, items = [], extras = [], countExtras = null, timeout, nudge, optional = false, initial = false, model = null, afterAtc = false, warn = [], instead = null }) {
     if (cue) { this.emit('cue', { text: cue }); this.log('cue', { text: cue }); }
     this.emit('awaiting', { waitKind: 'call', id, spec: items, cue });
-    this.lastWaitKind = 'call'; this.currentSpec = items;
+    this.lastWaitKind = 'call'; this.currentSpec = items; this.callAfterAtc = afterAtc;
     // A blind call, with nobody on the frequency: heard and marked, but nothing comes back. It used to draw "say
     // again" and "say again your callsign" from a station that wasn't there.
     const blind = !!this.ctx.blind;
