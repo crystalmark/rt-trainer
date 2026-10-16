@@ -70,6 +70,7 @@ const PHRASES = [
   [/\bnot of(?: an?)?\b(?=\s+\d)/g, 'not above'], [/\bnut above\b/g, 'not above'],          // "not of a 2000"
   [/\b(?:clear|glare) to (enter|transit|cross|land|leave)\b/g, 'cleared to $1'],   // the -ed goes missing, as on "controlled"
   [/\bmicro ?(light|lite|lyte)s?\b/g, 'microlight'],
+  [/\bsafety ?com+a?\b/g, 'safetycom'],                // "safety comm", "safety comma"
   [/\bdecimal for\b/g, 'decimal four'],               // SafetyCom "one three five decimal for eight zero"
   // "Golf India" said quickly comes back as one word, and the callsign is lost with it.
   [/\bg[ou]lfinderell?a?\b/g, 'golf india alpha'],     // "gulfinderella": golf India alpha

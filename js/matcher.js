@@ -1,6 +1,8 @@
 // Compares what the pilot said with what the controller expects.
 // An expectation ("spec") is a list of items; each item has one or more acceptable phrases.
 //   { label: 'QNH 1017', any: ['1017'], hard: true, fix: 'QNH 1017', substitutes: ['zone'], why: '...' }
+// `pattern` (a RegExp) is matched against single words, for what no list of phrases can hold: any airband frequency.
+// Its `example` is something that matches, for the tests' perfect pilot.
 // hard items must be present or ATC corrects you; soft items only count in the debrief.
 import { tokens, findCallsign, normalize } from './normalize.js';
 
@@ -49,7 +51,8 @@ export function match(text, spec, ctx, opts = {}) {
   const raw = String(text || '').toLowerCase();
   const items = (spec || []).map(item => {
     let index = -1;
-    for (const p of item.any) { const i = findPhrase(toks, p); if (i >= 0 && (index < 0 || i < index)) index = i; }
+    for (const p of item.any || []) { const i = findPhrase(toks, p); if (i >= 0 && (index < 0 || i < index)) index = i; }
+    if (item.pattern) { const i = toks.findIndex(t => item.pattern.test(t)); if (i >= 0 && (index < 0 || i < index)) index = i; }
     let substituted = null;
     if (index < 0 && item.substitutes) substituted = item.substitutes.find(s => findPhrase(toks, s) >= 0) || null;
     const forbidden = (item.forbid || []).find(f => findPhrase(toks, f) >= 0) || null;

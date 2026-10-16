@@ -39,7 +39,7 @@ export function perfectPilot(engine, { override = {} } = {}) {
     if (ev.kind === 'action') { if (ev.pending) doAsTold(engine, ev); return; }
     if (ev.kind !== 'awaiting') return;
     const ab = engine.ctx.abbr, reg = engine.ctx.reg;
-    const words = (ev.spec || []).map(i => i.any[0]).filter(Boolean);
+    const words = (ev.spec || []).map(i => i.any[0] || i.example).filter(Boolean);
     let text;
     if (override[ev.id]) text = override[ev.id](engine, ev);
     else if (ev.kind === 'awaiting' && ev.spec && ev.id === 'initial') text = `${engine.ctx.unit}, ${reg}, ${words.join(', ')}`;

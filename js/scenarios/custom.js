@@ -150,9 +150,21 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
     s.end(summary);
   }
 
+  // Where you are going is named and given as a number, each a check on the other. Which station and which frequency
+  // isn't checked: airfields have no frequencies in the area data yet, and a diversion to one with its own station
+  // would be marked down for the right answer. A farm strip is SafetyCom.
   function qsyCall(s) {
-    return { id: 'qsy', items: [P('changing frequency', ['changing', 'frequency', 'leaving your frequency', 'request frequency change', 'safetycom'])],
-      model: `{CALL}, ${miles(Math.max(1, plan.total - s.position().s))} from ${destination(plan).name}, request frequency change` };
+    const to = destination(plan), field = to.kind === 'airfield';
+    const ours = area.unit.toLowerCase().split(/\s+/);
+    const stations = ['safetycom', 'radio', 'information', 'traffic', 'tower', 'ground', 'approach', 'radar'].filter(w => !ours.includes(w));
+    return { id: 'qsy',
+      items: [P('changing frequency', ['changing', 'frequency', 'leaving your frequency', 'request frequency change', 'safetycom']),
+        P('station', [...stations, ...(field ? [to.name, ...(to.hear || [])] : [])], { soft: true,
+          why: 'Name the station you are changing to, “SafetyCom” or the airfield’s own: with the number, each is a check on the other.' }),
+        P('frequency', [], { soft: true, pattern: /^1(1[89]|2\d|3[0-6])\.\d+$/, example: '135.480',
+          why: 'Give the frequency as well as the name, all six digits on an 8.33 channel: “one three five decimal four eight zero”.' })],
+      model: `{CALL}, ${miles(Math.max(1, plan.total - s.position().s))} from ${to.name}, request frequency change to `
+        + (field ? `${to.name} on its frequency` : 'SafetyCom 135.480') };
   }
 
   // ---------- the flight, phase by phase ----------

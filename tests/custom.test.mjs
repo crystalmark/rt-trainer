@@ -711,3 +711,20 @@ test('a transit through a CTA alone never hears "zone"', async () => {
   assert.ok([...said].some(t => /negative transit|expect entry into controlled airspace/.test(t)), 'the refusal and the delay both came up');
   assert.deepEqual([...said].filter(t => /\bzone\b/i.test(t)), []);
 });
+
+// Taught to say where you are going as well as the number: "request frequency change to SafetyCom 135.480". Which
+// station and frequency isn't checked yet (airfields have none in the data), so a diversion with its own isn't marked down.
+test('the request to change frequency names the station and gives the frequency', async () => {
+  const qsy = async say => {
+    const events = await flyWith(scenarioFor(ROUTES[0], 3), engine => earlyPilot(engine, {
+      when: ev => ev.kind === 'awaiting' && ev.id === 'qsy', say, skip: 'qsy' }));
+    return events.find(e => e.type === 'call' && e.id === 'qsy').result;
+  };
+  assert.deepEqual((await qsy('golf India alpha request frequency change to safety comm one three five decimal four eight zero')).softMissing, []);
+  assert.deepEqual((await qsy('golf India alpha request frequency change to Sherburn Radio one two two decimal six')).softMissing, [],
+    'another station and frequency is not marked down');
+  assert.deepEqual((await qsy('golf India alpha request frequency change')).softMissing.map(i => i.label), ['station', 'frequency']);
+  assert.deepEqual((await qsy('golf India alpha request frequency change to SafetyCom')).softMissing.map(i => i.label), ['frequency']);
+  // The unit you are leaving is not the station you are going to.
+  assert.deepEqual((await qsy('Leeds Radar golf India alpha request frequency change 135.480')).softMissing.map(i => i.label), ['station']);
+});

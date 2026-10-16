@@ -406,7 +406,13 @@ test('the speech recognition log says which device each row came from', async ()
 // "Decimal four" heard as "decimal for": SafetyCom came out as "135 for 80", and the check on its frequency never saw it.
 test('"decimal for" is a four', () => {
   assert.equal(normalize('request change frequency to safety comma 135 decimal for eight zero golf India alpha'),
-    'request change frequency to safety comma 135.48 g i a');
+    'request change frequency to safetycom 135.48 g i a');
   assert.equal(normalize('one three five decimal for eight zero'), '135.48');
   assert.equal(normalize('request frequency change for landing'), 'request frequency change for landing', 'only after "decimal"');
+});
+
+test('SafetyCom, however it is heard, is one word', () => {
+  assert.equal(normalize('change frequency to safety comma 135 decimal for eight zero'), 'change frequency to safetycom 135.48');
+  assert.equal(normalize('safety comm one three five decimal four eight zero'), 'safetycom 135.48');
+  assert.equal(normalize('Safetycom'), 'safetycom');
 });
