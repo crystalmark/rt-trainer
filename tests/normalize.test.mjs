@@ -402,3 +402,11 @@ test('the speech recognition log says which device each row came from', async ()
   const rows = rowsFrom([{ type: 'call', t: 1, text: 'golf india alpha', result: { score: 100, missing: [], substitutions: [] } }], { device: 'Android · Chrome' });
   assert.equal(rows[0].device, 'Android · Chrome');
 });
+
+// "Decimal four" heard as "decimal for": SafetyCom came out as "135 for 80", and the check on its frequency never saw it.
+test('"decimal for" is a four', () => {
+  assert.equal(normalize('request change frequency to safety comma 135 decimal for eight zero golf India alpha'),
+    'request change frequency to safety comma 135.48 g i a');
+  assert.equal(normalize('one three five decimal for eight zero'), '135.48');
+  assert.equal(normalize('request frequency change for landing'), 'request frequency change for landing', 'only after "decimal"');
+});

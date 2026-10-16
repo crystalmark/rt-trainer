@@ -579,6 +579,24 @@ test('refused, a way round picked on the map, then asking to change frequency st
   assert.equal(asked.length, 0);
 });
 
+// "Confirm you will not enter controlled airspace", answered "remaining outside of controlled airspace": marked
+// down for no "affirm", where "confirm you are remaining outside" takes the same words.
+test('refused: "remaining outside controlled airspace" confirms you will not enter it', async () => {
+  const events = await fly(scenarioFor(ROUTES[1], 7), PROFILES[0], 7, { settings: { refusalBias: 1, trafficDensity: 'quiet' },
+    pilot: engine => {
+      const perfect = perfectPilot(engine);
+      return ev => {
+        if (ev.kind === 'awaiting' && /confirm you will not enter/.test(ev.atcText || '')) {
+          sendWhenClear(engine, 'remaining outside of controlled airspace routing round the zone G-HP'); return;
+        }
+        perfect(ev);
+      };
+    } });
+  const rb = events.find(e => e.type === 'readback' && /confirm you will not enter/.test(e.atcText || ''));
+  assert.deepEqual(rb?.result.missing, [], JSON.stringify(rb));
+  assert.ok(!events.some(e => e.type === 'correction'), JSON.stringify(events.filter(e => e.type === 'correction')));
+});
+
 // Out and back through the zone, the shape of the Forth bridges flight: a place flown past twice is two reports.
 // Looked up by place, both were cued at the second visit, and a report made on reaching the first drew "say again".
 test('out and back: each report is cued at its own visit', async () => {

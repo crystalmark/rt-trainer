@@ -318,7 +318,7 @@ export function customScenario(area, { points, altitude }, { rng = Math.random }
       readback: [P('negative transit', ['negative'], { soft: true }), ROS()], model: 'Negative transit, remain outside controlled airspace, {CALL}' });
     await s.atc('{CALL}, confirm you will not enter controlled airspace', {
       readback: [
-        P('affirm', ['affirm', 'will not enter', 'not enter', 'wilco'], { fix: null }),
+        P('affirm', ['affirm', 'will not enter', 'not enter', 'wilco', 'remaining outside', 'remain outside', 'will remain'], { fix: null }),
         P('controlled airspace', ['controlled airspace'], { substitutes: ['zone'], retry: '{CALL}, please confirm you will not enter controlled airspace',
           why: '“Zone” is the CTR only. The controller asked about controlled airspace, which includes the CTAs: answer in the same words.' }),
         P('new routing', ['routing', 'route', 'round', 'around', 'remaining outside', 'north', 'south', 'east', 'west', 'via'], { soft: true, why: 'Tell them your plan B so they know where you’re going.' }),
