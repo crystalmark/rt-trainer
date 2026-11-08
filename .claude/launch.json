@@ -5,7 +5,7 @@
       "name": "rt-trainer",
       "runtimeExecutable": "node",
       "runtimeArgs": [
-        "/Users/timothysquires/source/rt-trainer/scripts/serve.mjs",
+        "scripts/serve.mjs",
         "8080"
       ],
       "port": 8080
